@@ -19,6 +19,7 @@
 #define UDP_PROTO 0x11
 
 #include "util/queue_list.h"
+#include "common.h"
 
 union ip
 {
@@ -29,6 +30,7 @@ union ip
 void print_skb(struct sk_buff *skb);
 
 int pd_check_action(struct sk_buff *skb);
+int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);
 
 int pd_action_from_mirror(struct vport *p, struct sk_buff *skb);
 int pd_action_from_client(struct vport *p, struct sk_buff *skb);

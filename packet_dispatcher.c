@@ -202,8 +202,41 @@ mod_out:
 }
 
 //const union ip client = {{10, 0, 0, 1},};
-const union ip server = {{10, 0, 0, 2},};
-const union ip mirror = {{10, 0, 0, 3},};
+//const union ip server = {{10, 0, 0, 2},};
+//const union ip mirror = {{10, 0, 0, 3},};
+static struct host_info server;
+static struct host_info mirror;
+
+int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
+{
+    int i = 0;
+    for(i = 0; i < MAX_TCP_TABLE; ++i)
+    {
+        while(tcp_info_table[i].packet_buffer.count > 0)
+            del_queue(&(tcp_info_table[i].packet_buffer));
+
+        memset(&(tcp_info_table[i]), 0,sizeof(struct tcp_seq_info));
+    }
+    while(udp_buffer.count > 0)
+        del_queue(&(udp_buffer));
+
+    if(set_server != NULL)
+    {
+        server.ip.i = set_server->ip.i;
+        memcpy(server.mac, set_server->mac, 6);
+        printk("set server ip = %hhu.%hhu.%hhu.%hhu\n", server.ip.c[0], server.ip.c[1], server.ip.c[2], server.ip.c[3]);
+        printk("set server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", server.mac[0], server.mac[1], server.mac[2], server.mac[3], server.mac[4], server.mac[5]);
+    }
+    if(set_mirror != NULL)
+    {
+        mirror.ip.i = set_mirror->ip.i;
+        memcpy(mirror.mac, set_mirror->mac, 6);
+        printk("set mirror ip = %hhu.%hhu.%hhu.%hhu\n", mirror.ip.c[0], mirror.ip.c[1], mirror.ip.c[2], mirror.ip.c[3]);
+        printk("set mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", mirror.mac[0], mirror.mac[1], mirror.mac[2], mirror.mac[3], mirror.mac[4], mirror.mac[5]);
+    }
+    return 0;
+}
+
 int pd_check_action ( struct sk_buff *skb )
 {
     struct ethhdr* mac_header = eth_hdr ( skb );
@@ -221,11 +254,11 @@ int pd_check_action ( struct sk_buff *skb )
     ip_src.i = ip_header->saddr;
     ip_dst.i = ip_header->daddr;
 
-    if ( ip_src.i == server.i )
+    if ( ip_src.i == server.ip.i )
         return PT_ACTION_SERVER_TO_CLIENT;
-    else if ( ip_src.i == mirror.i )
+    else if ( ip_src.i == mirror.ip.i )
         return PT_ACTION_DROP;
-    else if ( ip_dst.i == server.i )
+    else if ( ip_dst.i == server.ip.i )
         return PT_ACTION_CLIENT_TO_SERVER;
 
     return PT_ACTION_CONTINUE;
@@ -235,8 +268,14 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
 {
     struct ethhdr* mac_header = eth_hdr ( skb_mod );
     struct iphdr* ip_header = ip_hdr ( skb_mod );
-    mac_header->h_dest[5] = 0x03;
-    ip_header->daddr = mirror.i;
+    memcpy(mac_header->h_dest, mirror.mac, 6);
+    /*mac_header->h_dest[0] = mirror.mac[0];
+    mac_header->h_dest[1] = mirror.mac[1];
+    mac_header->h_dest[2] = mirror.mac[2];
+    mac_header->h_dest[3] = mirror.mac[3];
+    mac_header->h_dest[4] = mirror.mac[4];
+    mac_header->h_dest[5] = mirror.mac[5];*/
+    ip_header->daddr = mirror.ip.i;
     ip_header->check = 0;
     ip_send_check ( ip_header );
     return 0;

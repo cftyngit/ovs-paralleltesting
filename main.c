@@ -5,6 +5,7 @@
 
 #include "hook.h"
 #include "ovs_func.h"
+#include "k2u.h"
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Access non-exported symbols");
@@ -31,11 +32,17 @@ static int __init lkm_init(void)
 
     printk(KERN_INFO "[%s] %s (0x%lx)\n", __this_module.name, sym_name, sym_addr);
     hijack_start((void*)sym_addr, &ovs_dp_process_received_packet_hi);
+    if(!netlink_init())
+        printk(KERN_INFO "netlink init success\n");
+    else
+        printk(KERN_INFO "netlink init fail\n");
+    
     return 0;
 }
 
 static void __exit lkm_exit(void)
 {
+    netlink_release();
     hijack_stop((void*)target);
 }
 

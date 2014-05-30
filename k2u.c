@@ -1,7 +1,5 @@
 #include "k2u.h"
 
-
-
 static struct sock *netlink_sock;
 
 static void udp_receive(struct sk_buff *skb)
@@ -37,21 +35,25 @@ static void udp_receive(struct sk_buff *skb)
         payload = nlmsg_data(nlh);
         payload_len = nlmsg_len(nlh);
         printk(KERN_INFO "payload_len = %d\n", payload_len);
-        printk(KERN_INFO "setup mirror IP = %d.%d.%d.%d\n", ((struct setup_host *)payload)->ip_addr.c[0], ((struct setup_host *)payload)->ip_addr.c[1],
-               ((struct setup_host *)payload)->ip_addr.c[2], ((struct setup_host *)payload)->ip_addr.c[3]);
-        printk(KERN_INFO "setup mirror MAC = %x:%x:%x:%x:%x:%x\n", ((struct setup_host *)payload)->host_mac[0], ((struct setup_host *)payload)->host_mac[1],
-               ((struct setup_host *)payload)->host_mac[2], ((struct setup_host *)payload)->host_mac[3], 
-               ((struct setup_host *)payload)->host_mac[4], ((struct setup_host *)payload)->host_mac[5]);
+        printk(KERN_INFO "setup mirror IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
+               ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
+        printk(KERN_INFO "setup mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+               ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
+               ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
+
+        pd_setup_hosts(NULL, ((struct host_info *)payload));
         break;
     case NLMSG_SETUP_SERVER:
         payload = nlmsg_data(nlh);
         payload_len = nlmsg_len(nlh);
         printk(KERN_INFO "payload_len = %d\n", payload_len);
-        printk(KERN_INFO "setup server IP = %d.%d.%d.%d\n", ((struct setup_host *)payload)->ip_addr.c[0], ((struct setup_host *)payload)->ip_addr.c[1],
-               ((struct setup_host *)payload)->ip_addr.c[2], ((struct setup_host *)payload)->ip_addr.c[3]);
-        printk(KERN_INFO "setup server MAC = %x:%x:%x:%x:%x:%x\n", ((struct setup_host *)payload)->host_mac[0], ((struct setup_host *)payload)->host_mac[1],
-               ((struct setup_host *)payload)->host_mac[2], ((struct setup_host *)payload)->host_mac[3], 
-               ((struct setup_host *)payload)->host_mac[4], ((struct setup_host *)payload)->host_mac[5]);
+        printk(KERN_INFO "setup server IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
+               ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
+        printk(KERN_INFO "setup server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+               ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
+               ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
+
+        pd_setup_hosts(((struct host_info *)payload), NULL);
         break;
     default:
         printk(KERN_INFO "Unknow msgtype recieved!\n");
