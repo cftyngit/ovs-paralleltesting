@@ -220,6 +220,8 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     while(udp_buffer.count > 0)
         del_queue(&(udp_buffer));
 
+    printk("old server ip = %d\n", server.ip.i);
+    printk("old mirror ip = %d\n", mirror.ip.i);
     if(set_server != NULL)
     {
         server.ip.i = set_server->ip.i;

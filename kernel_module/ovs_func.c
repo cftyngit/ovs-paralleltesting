@@ -41,7 +41,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 	u64 *stats_counter;
 	u32 n_mask_hit;
 	int error;
-	
+    printk("dp: %p, upcall: %d\n", dp, p->upcall_portid);
 	stats = this_cpu_ptr(dp->stats_percpu);
 	error = (*ovs_flow_extract_hi)(skb, p->port_no, &key);
 	

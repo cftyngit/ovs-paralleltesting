@@ -14,6 +14,7 @@
 #include <errno.h>
 
 #include "network.h"
+#include "../kernel_module/common.h"
 
 #ifdef NDEBUG
 # define DEBUG_PRINT(fmt, ...)
@@ -43,22 +44,11 @@
 #define HOST_SERVER 1
 #define HOST_MIRROR 2
 
-union my_ip_type
-{
-    unsigned char c[4];
-    unsigned int i;
-};
-
-struct setup_host
-{
-    unsigned char host_mac[6];
-    union my_ip_type ip_addr;
-};
-
 struct setup_message
 {
-    int host_type;
-    struct setup_host host;
+    char host_type;
+    char padding[3];
+    struct host_info host;
 };
 
 int get_nl_socket();
@@ -69,7 +59,7 @@ int main()
 {
     int nl_sockfd = get_nl_socket();
     struct setup_message setup_m;
-    int tcp_sockfd = get_listen_sock(htonl(INADDR_ANY), TCP_PORT);
+    int udp_sockfd = get_udp_sock(htonl(INADDR_ANY), TCP_PORT);
 
 #ifdef DAEMONIZE
     skeleton_daemon();
@@ -81,9 +71,9 @@ int main()
         return -1;
     }
 
-    if(tcp_sockfd < 0)
+    if(udp_sockfd < 0)
     {
-        printf("get tcp sockfd error\n");
+        printf("get udp sockfd error\n");
         return -1;
     }
 
@@ -92,42 +82,47 @@ int main()
         struct sockaddr_in thisSockIn;
         bzero (&thisSockIn, sizeof(struct sockaddr_in));
         socklen_t thisAddrSize = sizeof(thisSockIn);
-        int tmpSock = accept(tcp_sockfd, (struct sockaddr *)&thisSockIn, (socklen_t*)&thisAddrSize);
+        //int tmpSock = accept(tcp_sockfd, (struct sockaddr *)&thisSockIn, (socklen_t*)&thisAddrSize);
         int message_type = 0;
-
-        if (tmpSock == -1)
-            perror("call to accept");
+        int nbytes = 0;
 
         bzero(&setup_m, sizeof(setup_m));
-        read(tmpSock, &setup_m, sizeof(struct setup_message));
+        //read(tmpSock, &setup_m, sizeof(struct setup_message));
+        nbytes = recvfrom(udp_sockfd, &setup_m, sizeof(setup_m), 0, (struct sockaddr *)&thisSockIn, (socklen_t*)&thisAddrSize);
+        if (nbytes < 0)
+        {
+            perror ("could not read datagram!!");
+            continue;
+        }
+
         switch(setup_m.host_type)
         {
         case HOST_SERVER:
-            MSG_PRINT("get server config ip = %hhu.%hhu.%hhu.%hhu\n", setup_m.host.ip_addr.c[0],
-                    setup_m.host.ip_addr.c[1], setup_m.host.ip_addr.c[2], setup_m.host.ip_addr.c[3]);
+            MSG_PRINT("get server config ip = %hhu.%hhu.%hhu.%hhu\n", setup_m.host.ip.c[0],
+                    setup_m.host.ip.c[1], setup_m.host.ip.c[2], setup_m.host.ip.c[3]);
             MSG_PRINT("get server config mac = %hhx:%hhx:%hhx:%hhx:%hhx:%x\n",
-                        setup_m.host.host_mac[0], setup_m.host.host_mac[1], setup_m.host.host_mac[2],
-                    setup_m.host.host_mac[3], setup_m.host.host_mac[4], setup_m.host.host_mac[5]);
+                        setup_m.host.mac[0], setup_m.host.mac[1], setup_m.host.mac[2],
+                    setup_m.host.mac[3], setup_m.host.mac[4], setup_m.host.mac[5]);
             message_type = NLMSG_SETUP_SERVER;
             break;
         case HOST_MIRROR:
-            MSG_PRINT("get mirror config ip = %hhu.%hhu.%hhu.%hhu\n", setup_m.host.ip_addr.c[0],
-                    setup_m.host.ip_addr.c[1], setup_m.host.ip_addr.c[2], setup_m.host.ip_addr.c[3]);
+            MSG_PRINT("get mirror config ip = %hhu.%hhu.%hhu.%hhu\n", setup_m.host.ip.c[0],
+                    setup_m.host.ip.c[1], setup_m.host.ip.c[2], setup_m.host.ip.c[3]);
             MSG_PRINT("get mirror config mac = %hhx:%hhx:%hhx:%hhx:%hhx:%x\n",
-                        setup_m.host.host_mac[0], setup_m.host.host_mac[1], setup_m.host.host_mac[2],
-                    setup_m.host.host_mac[3], setup_m.host.host_mac[4], setup_m.host.host_mac[5]);
+                        setup_m.host.mac[0], setup_m.host.mac[1], setup_m.host.mac[2],
+                    setup_m.host.mac[3], setup_m.host.mac[4], setup_m.host.mac[5]);
             message_type = NLMSG_SETUP_MIRROR;
             break;
         }
-        if( 0 > send_nl_message(nl_sockfd, message_type, &(setup_m.host), sizeof(struct setup_host)))
+        if( 0 > send_nl_message(nl_sockfd, message_type, &(setup_m.host), sizeof(struct host_info)))
         {
             MSG_PRINT("send fail\n");
             DEBUG_PRINT("fail message: %s\n", strerror(errno));
         }
         else
             MSG_PRINT("send success\n");
-
     }
+
     return 0;
 }
 

@@ -14,6 +14,7 @@
 //int get_listen_sock(unsigned short port);
 int get_listen_sock(unsigned long int address, unsigned short port);
 int connect_to(char address[], unsigned short port);
+int get_udp_sock(unsigned long int address, unsigned short port);
 //int connect_to(unsigned long int address, unsigned short port);
 
 #endif // NETWORK_H

@@ -9,7 +9,7 @@ union my_ip_type
 
 struct host_info
 {
-    unsigned char mac[6];
     union my_ip_type ip;
+    unsigned char mac[6];
 };
 #endif
