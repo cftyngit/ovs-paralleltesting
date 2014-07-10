@@ -8,6 +8,8 @@
 #include <linux/ip.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
+#include <linux/vmalloc.h>
+#include <linux/kernel.h>
 
 #include "ovs_func.h"
 
@@ -28,6 +30,7 @@ union ip
 };
 
 void print_skb(struct sk_buff *skb);
+void init_tcp_state(void);
 
 int pd_check_action(struct sk_buff *skb);
 int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);

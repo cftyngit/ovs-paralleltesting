@@ -7,21 +7,24 @@
 #include "ovs_func.h"
 #include "k2u.h"
 
+#include "packet_dispatcher.h"
+
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Access non-exported symbols");
-MODULE_AUTHOR("Stephen Zhang");
+MODULE_DESCRIPTION("OVS parallel testing");
+MODULE_AUTHOR("cftyn");
 
 static unsigned long target;
 
 static int __init lkm_init(void)
 {
     char *sym_name = "ovs_dp_process_received_packet";
-    unsigned long sym_addr = kallsyms_lookup_name(sym_name);
-    
+    unsigned long sym_addr = 0;
+    request_module("openvswitch.ko");
+    sym_addr = kallsyms_lookup_name(sym_name);
     //char filename[256];
 	if(0 > init_ovs_func())
 		return -1;
-    
+
     target = sym_addr;
     if(sym_addr == 0)
     {
@@ -36,7 +39,8 @@ static int __init lkm_init(void)
         printk(KERN_INFO "netlink init success\n");
     else
         printk(KERN_INFO "netlink init fail\n");
-    
+
+    init_tcp_state();
     return 0;
 }
 

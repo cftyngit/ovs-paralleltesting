@@ -75,6 +75,17 @@ void* get_data(struct queue_list_head *h)
     return ret;
 }
 
+void* peek_data(struct queue_list_head *h)
+{
+    struct queue_list *ql = h->head;
+    void* ret = NULL;
+
+    if(NULL == ql || 0 >= ql->count)
+        return NULL;
+
+    ret = ql->head->data;
+    return ret;
+}
 
 int del_queue(struct queue_list_head *h)
 {

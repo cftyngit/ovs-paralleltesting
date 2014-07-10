@@ -16,5 +16,6 @@ int add_data(struct queue_list_head* h, void* data);
 int del_queue(struct queue_list_head* h);
 
 void* get_data(struct queue_list_head* h);
+void* peek_data(struct queue_list_head* h);
 
 #endif // QUEUE_LIST_H
