@@ -3,7 +3,7 @@
 
 #define MAX_TCP_TABLE 65536
 
-static struct tcp_seq_info
+/*static struct tcp_seq_info
 {
     u32 seq_server;
     u32 seq_mirror;
@@ -13,7 +13,7 @@ static struct tcp_seq_info
     struct queue_list_head packet_buffer;
     int state;
     u16 mirror_port;
-} tcp_info_table[MAX_TCP_TABLE];
+} tcp_info_table[MAX_TCP_TABLE];*/
 
 struct buf_data
 {
@@ -21,15 +21,23 @@ struct buf_data
     struct vport* p;
 };
 
+struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
+size_t conn_state_count = 0;
+
 #define get_tcp_state(port) ({tcp_info_table[port].state;})
 
 static struct queue_list_head udp_buffer;
 
-void init_tcp_state()
+void init_tcp_state(void)
 {
-    int i = 0;
-    for(i = 0; i < MAX_TCP_TABLE; ++i)
-        tcp_info_table[i].state = TCP_STATE_LISTEN;
+    //int i = 0;
+    /*for(i = 0; i < MAX_TCP_TABLE; ++i)
+        tcp_info_table[i].state = TCP_STATE_LISTEN;*/
+}
+
+void init_packet_dispatcher()
+{
+    init_tcp_state();
 }
 
 void print_skb ( struct sk_buff *skb )
@@ -89,94 +97,92 @@ void print_skb ( struct sk_buff *skb )
 void set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
 {
     struct tcphdr* tcp_header;
+    struct iphdr* ip_header;
     unsigned short port;
-    int old_state;
+    union my_ip_type ip;
+    int old_state, new_state;
+
     if ( ! ( ( skb_client == NULL ) ^ ( skb_mirror == NULL ) ) )
         return;
 
     tcp_header = skb_client ? tcp_hdr ( skb_client ) : tcp_hdr ( skb_mirror );
+    ip_header = skb_client ? ip_hdr ( skb_client ) : ip_hdr ( skb_mirror );
     port = ntohs ( skb_client ? tcp_header->source : tcp_header->dest );
-    old_state = get_tcp_state( port );
+    ip.i = skb_client ? ip_header->saddr : ip_header->daddr;
+    old_state = tcp_state_get(&conn_info_set, ip, port);
+
     printk ( KERN_INFO "old_state %d\n", old_state );
-    switch ( get_tcp_state ( port ) )
+    switch ( old_state )
     {
     case TCP_STATE_CLOSED:
     case TCP_STATE_LISTEN:
         if ( skb_mirror && tcp_header->syn && !tcp_header->ack )
-            tcp_info_table[port].state = TCP_STATE_SYN_SEND;
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_SYN_SEND);
 
         if ( skb_client && tcp_header->syn && !tcp_header->ack )
-            tcp_info_table[port].state = TCP_STATE_SYN_RCVD;
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_SYN_RCVD);
 
         break;
     case TCP_STATE_SYN_SEND:
         if ( skb_client && tcp_header->syn && tcp_header->ack )
-            tcp_info_table[port].state = TCP_STATE_ESTABLISHED;
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_ESTABLISHED);
 
         break;
     case TCP_STATE_SYN_RCVD:
         if ( skb_mirror && tcp_header->syn && tcp_header->ack )
-            tcp_info_table[port].state = TCP_STATE_ESTABLISHED;
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_ESTABLISHED);
 
         break;
     case TCP_STATE_ESTABLISHED:
         if ( tcp_header->fin )
         {
             if ( skb_client )
-                tcp_info_table[port].state = TCP_STATE_FIN_WAIT1;
+                tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT1);
             else
-                tcp_info_table[port].state = TCP_STATE_CLOSE_WAIT1;
+                tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT1);
 
-            tcp_info_table[port].seq_fin = ntohl ( tcp_header->seq );
+            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
         }
         break;
     case TCP_STATE_FIN_WAIT1:
-        if ( skb_mirror && ( ntohl ( tcp_header->ack_seq ) > tcp_info_table[port].seq_fin ) )
-            tcp_info_table[port].state = TCP_STATE_FIN_WAIT2;
-
+        if ( skb_mirror && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT2);
     case TCP_STATE_FIN_WAIT2:
         if ( skb_mirror && tcp_header->fin )
         {
-            tcp_info_table[port].state = TCP_STATE_TIME_WAIT;
-            tcp_info_table[port].seq_fin = ntohl ( tcp_header->seq );
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_TIME_WAIT);
+            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
         }
         break;
     case TCP_STATE_TIME_WAIT:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > tcp_info_table[port].seq_fin ) )
+        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
         {
-            tcp_info_table[port].state = TCP_STATE_LISTEN;
-            tcp_info_table[port].seq_fin = 0;
-            tcp_info_table[port].mirror_port = 0;
-            tcp_info_table[port].seq_mirror = 0;
-            tcp_info_table[port].seq_server = 0;
-            tcp_info_table[port].seq_current = 0;
+            if(tcp_state_reset(&conn_info_set, ip, port) == 0)
+                conn_state_count--;
         }
         break;
     case TCP_STATE_CLOSE_WAIT1:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > tcp_info_table[port].seq_fin ) )
-            tcp_info_table[port].state = TCP_STATE_CLOSE_WAIT2;
+        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT2);
 
     case TCP_STATE_CLOSE_WAIT2:
         if ( skb_client && tcp_header->fin )
         {
-            tcp_info_table[port].state = TCP_STATE_LAST_ACK;
-            tcp_info_table[port].seq_fin = ntohl ( tcp_header->seq );
+            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_LAST_ACK);
+            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
         }
         break;
     case TCP_STATE_LAST_ACK:
-        if ( skb_mirror && ntohl ( tcp_header->ack_seq ) > tcp_info_table[port].seq_fin )
+        if ( skb_mirror && ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin )
         {
-            tcp_info_table[port].state = TCP_STATE_LISTEN;
-            tcp_info_table[port].seq_fin = 0;
-            tcp_info_table[port].mirror_port = 0;
-            tcp_info_table[port].seq_mirror = 0;
-            tcp_info_table[port].seq_server = 0;
-            tcp_info_table[port].seq_current = 0;
+            if(tcp_state_reset(&conn_info_set, ip, port) == 0)
+                conn_state_count--;
         }
         break;
     }
-    if(old_state != get_tcp_state( port ) )
-        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "client" : "server", old_state, get_tcp_state ( port ) );
+    new_state = tcp_state_get(&conn_info_set, ip, port);
+    if(old_state != new_state )
+        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "client" : "server", old_state, new_state );
 
     return;
 }
@@ -195,11 +201,8 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
      */
     stats = this_cpu_ptr ( dp->stats_percpu );
     error = ovs_flow_extract ( skb_mod, p->port_no, &key );
-    printk("port_no = %d\n", p->port_no);
-    printk("tp0\n");
     if ( unlikely ( error ) )
     {
-        printk("tp1\n");
         kfree_skb ( skb_mod );
         return;
     }
@@ -207,7 +210,6 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
     if ( unlikely ( !flow ) )
     {
         struct dp_upcall_info upcall;
-        printk("tp2\n");
         upcall.cmd = OVS_PACKET_CMD_MISS;
         upcall.key = &key;
         upcall.userdata = NULL;
@@ -217,7 +219,6 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
         stats_counter = &stats->n_missed;
         goto mod_out;
     }
-    printk("tp3\n");
     OVS_CB ( skb_mod )->flow = flow;
     OVS_CB ( skb_mod )->pkt_key = &key;
 
@@ -226,7 +227,6 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
     stats_counter = &stats->n_hit;
 
 mod_out:
-    printk("tp4\n");
     u64_stats_update_begin ( &stats->sync );
     ( *stats_counter ) ++;
     stats->n_mask_hit += n_mask_hit;
@@ -247,10 +247,10 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     int i = 0;
     for(i = 0; i < MAX_TCP_TABLE; ++i)
     {
-        while(tcp_info_table[i].packet_buffer.count > 0)
+        /*while(tcp_info_table[i].packet_buffer.count > 0)
             del_queue(&(tcp_info_table[i].packet_buffer));
 
-        memset(&(tcp_info_table[i]), 0,sizeof(struct tcp_seq_info));
+        memset(&(tcp_info_table[i]), 0,sizeof(struct tcp_seq_info));*/
     }
     while(udp_buffer.count > 0)
         del_queue(&(udp_buffer));
@@ -277,7 +277,7 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
 int pd_check_action ( struct sk_buff *skb )
 {
     struct ethhdr* mac_header = eth_hdr ( skb );
-    union ip ip_src, ip_dst;
+    union my_ip_type ip_src, ip_dst;
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
 
@@ -306,29 +306,24 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
     struct ethhdr* mac_header = eth_hdr ( skb_mod );
     struct iphdr* ip_header = ip_hdr ( skb_mod );
     memcpy(mac_header->h_dest, mirror.mac, 6);
-    /*mac_header->h_dest[0] = mirror.mac[0];
-    mac_header->h_dest[1] = mirror.mac[1];
-    mac_header->h_dest[2] = mirror.mac[2];
-    mac_header->h_dest[3] = mirror.mac[3];
-    mac_header->h_dest[4] = mirror.mac[4];
-    mac_header->h_dest[5] = mirror.mac[5];*/
     ip_header->daddr = mirror.ip.i;
     ip_header->check = 0;
     ip_send_check ( ip_header );
     return 0;
 }
 
-int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
+int pd_respond_mirror ( struct vport *p, union my_ip_type ip, int client_port, unsigned char proto )
 {
     struct sk_buff* skb_mod = NULL;
     struct queue_list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
-    //printk("pd_respond_mirror lock %d\n", unlock);
+
     if ( UDP_PROTO == proto )
         packet_buf = &udp_buffer;
     else
-        packet_buf = & ( tcp_info_table[client_port].packet_buffer );
+        packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
 
+    printk("proto = %d\n", proto);
     switch ( proto )
     {
     case UDP_PROTO:
@@ -347,7 +342,7 @@ int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
     case TCP_PROTO:
         while ( 1 )
         {
-            int tcp_s = get_tcp_state ( client_port );
+            int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
             struct tcphdr* tcp_header;
 
             if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
@@ -356,8 +351,8 @@ int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
             bd = peek_data ( packet_buf );
             if(bd != NULL)
             {
-                u32 seq_server = tcp_info_table[client_port].seq_server;
-                u32 seq_mirror = tcp_info_table[client_port].seq_mirror;
+                u32 seq_server = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_server;
+                u32 seq_mirror = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_mirror;
                 u32 seq_tmp = 0;
                 skb_mod = bd->skb;
                 tcp_header = tcp_hdr ( skb_mod );
@@ -366,30 +361,19 @@ int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
                 else
                     seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
 
-                printk("seq_t %u, seq_c %u\n", seq_tmp, tcp_info_table[client_port].seq_current);
+                printk("seq_t %u, seq_c %u\n", seq_tmp, TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_current);
 
-                if(seq_tmp > tcp_info_table[client_port].seq_next)
+                if(seq_tmp > TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_next)
                     break;
             }
-            printk("get data\n");
             bd = get_data ( packet_buf );
 
             if ( NULL == bd )
             {
-                printk("get NULL\n");
                 if( 1 == packet_buf->count )
                     break;
-                /*
-                if( unlock > 0 )
-                {
-                    del_queue ( packet_buf );
-                    //unlock--;
-                    continue;
-                }
-                else
-                    break;*/
+
                 del_queue ( packet_buf );
-                printk("break by out of queue\n");
                 break;
             }
             skb_mod = bd->skb;
@@ -397,23 +381,21 @@ int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
             pd_modify_ip_mac ( skb_mod );
             if ( !(tcp_header->syn && !tcp_header->ack) )
             {
-                unsigned int seq_server = tcp_info_table[client_port].seq_server;
-                unsigned int seq_mirror = tcp_info_table[client_port].seq_mirror;
+                unsigned int seq_server = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_server;
+                unsigned int seq_mirror = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_mirror;
                 if ( seq_mirror > seq_server )
                     tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server ) );
                 else
                     tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror ) );
             }
 
-            if(tcp_info_table[client_port].mirror_port)
-                tcp_header->dest = htons(tcp_info_table[client_port].mirror_port);
+            if(TCP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port)
+                tcp_header->dest = htons(TCP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port);
 
             set_tcp_state ( skb_mod, NULL );
             send_skbmod ( bd->p, skb_mod );
             kfree(bd->p);
             kfree(bd);
-            printk("after queue\n");
-            //print_skb(skb_mod);
         }
         break;
     default:
@@ -427,7 +409,7 @@ int pd_respond_mirror ( struct vport *p, int client_port, unsigned char proto )
 int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
 {
     struct iphdr* ip_header = ip_hdr ( skb );
-
+    union my_ip_type ip = {.i = ip_header->daddr,};
     if ( UDP_PROTO == ip_header->protocol )
     {
         struct udphdr* udp_header   = udp_hdr ( skb );
@@ -446,6 +428,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
     {
         struct tcphdr* tcp_header   = tcp_hdr ( skb );
         unsigned short client_port  = ntohs ( tcp_header->dest );
+        struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
 
@@ -458,20 +441,19 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
 
         if ( tcp_header->syn /*&& tcp_header->ack*/ )
         {
-            tcp_info_table[client_port].seq_mirror = ntohl ( tcp_header->seq );
-            tcp_info_table[client_port].mirror_port = ntohs ( tcp_header->source );
+            this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
+            this_tcp_info->mirror_port = ntohs ( tcp_header->source );
         }
-        if(ntohl(tcp_header->seq) >= tcp_info_table[client_port].seq_current)
+        if(ntohl(tcp_header->seq) >= this_tcp_info->seq_current)
         {
             if ( tcp_header->syn || tcp_header->fin )
                 data_size = data_size ? data_size : 1;
 
-            tcp_info_table[client_port].seq_current = ntohl(tcp_header->seq);
-            tcp_info_table[client_port].seq_next = (ntohl(tcp_header->seq) + data_size) % UINT_MAX;
+            this_tcp_info->seq_current = ntohl(tcp_header->seq);
+            this_tcp_info->seq_next = (ntohl(tcp_header->seq) + data_size) % UINT_MAX;
         }
         set_tcp_state ( NULL, skb );
-        //pd_respond_mirror ( p, client_port, TCP_PROTO, 1 );
-        pd_respond_mirror ( p, client_port, TCP_PROTO );
+        pd_respond_mirror ( p, ip, client_port, TCP_PROTO );
     }
     return 0;
 }
@@ -480,11 +462,12 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
 {
     struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
     struct iphdr* ip_header = ip_hdr ( skb_mod );
+    union my_ip_type ip = {.i = ip_header->saddr,};
     struct queue_list_head* packet_buf = NULL;
 
     struct vport* this_vport = kmalloc(sizeof(struct vport), GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
-
+    printk("into function: %s\n", __func__);
     memcpy(this_vport, p, sizeof(struct vport));
     bd->p = this_vport;
     bd->skb = skb_mod;
@@ -496,37 +479,38 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
             add_queue ( packet_buf );
 
         add_data ( packet_buf, bd );
-        //pd_respond_mirror ( p, -1, UDP_PROTO, 0 );
-        pd_respond_mirror ( p, -1, UDP_PROTO );
+        pd_respond_mirror ( p, ip, -1, UDP_PROTO );
     }
 
     if ( TCP_PROTO == ip_header->protocol )
     {
         struct tcphdr* tcp_header = tcp_hdr ( skb_mod );
         unsigned short client_port = ntohs ( tcp_header->source );
-        packet_buf = & ( tcp_info_table[client_port].packet_buffer );
+        struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
+        packet_buf = & ( this_tcp_info->buffers.packet_buffer );
         if ( 0 == packet_buf->count )
             add_queue ( packet_buf );
 
         add_data ( packet_buf, bd );
         printk("add data %u\n", ntohl ( tcp_header->seq ));
-        switch ( get_tcp_state ( client_port ) )
+        switch ( tcp_state_get(&conn_info_set, ip, client_port) )
         {
         case TCP_STATE_SYN_RCVD:
         case TCP_STATE_FIN_WAIT1:
             break;
         default:
-            //pd_respond_mirror ( p, client_port, TCP_PROTO, 0 );
-            pd_respond_mirror ( p, client_port, TCP_PROTO );
+            pd_respond_mirror ( p, ip, client_port, TCP_PROTO );
             break;
         }
     }
+
     return 0;
 }
 
 int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
 {
     struct iphdr* ip_header = ip_hdr ( skb );
+    union my_ip_type ip = {.i = ip_header->daddr,};
     if ( UDP_PROTO == ip_header->protocol )
     {
         struct udphdr* udp_header   = udp_hdr ( skb );
@@ -536,34 +520,27 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
 
         data[data_size] = '\0';
-        /*if ( data_size )
-            printk ( KERN_INFO "pd_action_from_server UDP data %d: %s\n", data_size, data );*/
-
         kfree ( data );
     }
     if ( TCP_PROTO == ip_header->protocol )
     {
         struct tcphdr* tcp_header   = tcp_hdr ( skb );
         unsigned short client_port  = ntohs ( tcp_header->dest );
+        struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
 
         memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
         data[data_size] = '\0';
-        /*if ( data_size )
-            printk ( KERN_INFO "pd_action_from_server TCP data %d: %s\n", data_size, data );*/
 
         kfree ( data );
 
         if ( tcp_header->syn )
         {
-            tcp_info_table[client_port].seq_server = ntohl ( tcp_header->seq );
-
-            if ( !tcp_header->ack && get_tcp_state(client_port) == TCP_STATE_LISTEN )
-                tcp_info_table[client_port].state = TCP_STATE_CLOSED;
+            this_tcp_info->seq_server = ntohl ( tcp_header->seq );
+            if ( !tcp_header->ack && tcp_state_get(&conn_info_set, ip, client_port) == TCP_STATE_LISTEN )
+                tcp_state_set(&conn_info_set, ip, client_port, TCP_STATE_CLOSED);
         }
-        //printk("lock %u\n", ntohl ( tcp_header->seq ));
-        //add_queue ( &(tcp_info_table[client_port].packet_buffer) );
     }
     return 0;
 }

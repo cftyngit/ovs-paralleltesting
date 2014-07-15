@@ -18,4 +18,11 @@ int del_queue(struct queue_list_head* h);
 void* get_data(struct queue_list_head* h);
 void* peek_data(struct queue_list_head* h);
 
+#define clean_queue_list(h) \
+do  \
+{   \
+    while((h)->count) \
+        del_queue(h);   \
+}while(0)
+
 #endif // QUEUE_LIST_H

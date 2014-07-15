@@ -1,5 +1,5 @@
 obj-m += find_k_func.o
-find_k_func-objs := main.o hook.o ovs_func.o packet_dispatcher.o util/queue_list.o k2u.o
+find_k_func-objs := main.o hook.o ovs_func.o packet_dispatcher.o util/queue_list.o k2u.o connect_state.o
 
 ifeq ($(KERNELDIR),)
 KERNELDIR=/lib/modules/$(shell uname -r)/build

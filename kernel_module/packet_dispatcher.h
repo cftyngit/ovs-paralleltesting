@@ -10,6 +10,7 @@
 #include <linux/udp.h>
 #include <linux/vmalloc.h>
 #include <linux/kernel.h>
+#include <linux/radix-tree.h>
 
 #include "ovs_func.h"
 
@@ -22,15 +23,16 @@
 
 #include "util/queue_list.h"
 #include "common.h"
+#include "connect_state.h"
 
-union ip
+/*union ip
 {
     unsigned char c[4];
     unsigned int i;
-};
+};*/
 
 void print_skb(struct sk_buff *skb);
-void init_tcp_state(void);
+void init_packet_dispatcher(void);
 
 int pd_check_action(struct sk_buff *skb);
 int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);

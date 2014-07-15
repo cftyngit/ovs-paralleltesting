@@ -11,36 +11,34 @@
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("OVS parallel testing");
-MODULE_AUTHOR("cftyn");
+MODULE_AUTHOR("cftyn, <cftyn1@gmail.com>");
 
 static unsigned long target;
 
 static int __init lkm_init(void)
 {
     char *sym_name = "ovs_dp_process_received_packet";
-    unsigned long sym_addr = 0;
     request_module("openvswitch.ko");
-    sym_addr = kallsyms_lookup_name(sym_name);
-    //char filename[256];
-	if(0 > init_ovs_func())
-		return -1;
+    target = kallsyms_lookup_name(sym_name);
 
-    target = sym_addr;
-    if(sym_addr == 0)
+    if(target == 0)
     {
 		printk(KERN_INFO "can't find kernel function: %s\n", sym_name);
-		return 0;
+		return -1;
     }
-    //strncpy(filename, (char *)sym_addr, 255);
 
-    printk(KERN_INFO "[%s] %s (0x%lx)\n", __this_module.name, sym_name, sym_addr);
-    hijack_start((void*)sym_addr, &ovs_dp_process_received_packet_hi);
+    init_packet_dispatcher();
+    if(0 > init_ovs_func())
+        return -1;
+
+    printk(KERN_INFO "[%s] %s (0x%lx)\n", __this_module.name, sym_name, target);
+    hijack_start((void*)target, &ovs_dp_process_received_packet_hi);
+
     if(!netlink_init())
         printk(KERN_INFO "netlink init success\n");
     else
         printk(KERN_INFO "netlink init fail\n");
 
-    init_tcp_state();
     return 0;
 }
 
