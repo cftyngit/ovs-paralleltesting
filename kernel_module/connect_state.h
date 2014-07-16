@@ -31,10 +31,31 @@ struct tcp_conn_info
     struct commom_buffers buffers;
 };
 
+#define TCP_CONN_INFO_INIT \
+{ \
+    .seq_server = 0, \
+    .seq_mirror = 0, \
+    .seq_fin = 0, \
+    .seq_current = 0, \
+    .seq_next = 0, \
+    .state = TCP_STATE_LISTEN, \
+    .mirror_port = 0, \
+    .buffers = {.packet_buffer = QUEUE_LIST_INIT, }, \
+}
+
 struct udp_conn_info
 {
+    u16 mirror_port;
+    size_t unlock;
     struct commom_buffers buffers;
 };
+
+#define UDP_CONN_INFO_INIT \
+{ \
+    .mirror_port = 0, \
+    .unlock = 0, \
+    .buffers = {.packet_buffer = QUEUE_LIST_INIT, }, \
+}
 
 struct host_conn_info
 {

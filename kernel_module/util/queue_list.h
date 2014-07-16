@@ -25,4 +25,9 @@ do  \
         del_queue(h);   \
 }while(0)
 
+#define QUEUE_LIST_INIT \
+{ \
+    .count = 0, \
+}
+
 #endif // QUEUE_LIST_H

@@ -8,7 +8,6 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
         return NULL;
 
     get_conn_info = radix_tree_lookup(&(conn_info_set->conn_info_set), ip.i);
-    printk("get_conn_info = %p\n", get_conn_info);
     if(get_conn_info)
     {
         switch(proto)
