@@ -24,6 +24,7 @@
 #include "util/queue_list.h"
 #include "common.h"
 #include "connect_state.h"
+#include "l4proto/tcp.h"
 
 /*union ip
 {

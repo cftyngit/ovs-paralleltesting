@@ -70,6 +70,7 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
     {
         clean_queue_list(&(get_proto_state->buffers.packet_buffer));
         radix_tree_delete(&(get_conn_info->tcp_info_set), port);
+        kfree(get_proto_state);
         get_conn_info->tcp_info_count--;
     }
 
@@ -77,6 +78,7 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
         return 1;
 
     radix_tree_delete(&(conn_info_set->conn_info_set), ip.i);
+    kfree(get_conn_info);
     conn_info_set->count--;
     return 0;
 }

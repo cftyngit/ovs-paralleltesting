@@ -21,6 +21,8 @@ struct commom_buffers
 
 struct tcp_conn_info
 {
+    u32 seq_rmhost;
+    u32 seq_rmhost_fake;
     u32 seq_server;
     u32 seq_mirror;
     u32 seq_fin;

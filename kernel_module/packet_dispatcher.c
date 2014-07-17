@@ -341,6 +341,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
         {
             int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
             struct tcphdr* tcp_header;
+            struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
 
             if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
                 break;
@@ -348,8 +349,8 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             bd = peek_data ( packet_buf );
             if(bd != NULL)
             {
-                u32 seq_server = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_server;
-                u32 seq_mirror = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_mirror;
+                u32 seq_server = this_tcp_info->seq_server;
+                u32 seq_mirror = this_tcp_info->seq_mirror;
                 u32 seq_tmp = 0;
                 skb_mod = bd->skb;
                 tcp_header = tcp_hdr ( skb_mod );
@@ -358,9 +359,9 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
                 else
                     seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
 
-                printk("seq_t %u, seq_c %u\n", seq_tmp, TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_current);
+                printk("seq_t %u, seq_c %u\n", seq_tmp, this_tcp_info->seq_current);
 
-                if(seq_tmp > TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_next)
+                if(seq_tmp > this_tcp_info->seq_next)
                     break;
             }
             bd = get_data ( packet_buf );
@@ -376,21 +377,48 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             skb_mod = bd->skb;
             tcp_header = tcp_hdr ( skb_mod );
             pd_modify_ip_mac ( skb_mod );
+            /*
+             * SYN packet doesn't need to chenge seq number
+             */
             if ( !(tcp_header->syn && !tcp_header->ack) )
             {
-                unsigned int seq_server = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_server;
-                unsigned int seq_mirror = TCP_CONN_INFO(&conn_info_set, ip, client_port)->seq_mirror;
+                unsigned int seq_server = this_tcp_info->seq_server;
+                unsigned int seq_mirror = this_tcp_info->seq_mirror;
+                u32 seq_rmhost = this_tcp_info->seq_rmhost;
+                u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+                /*
+                 * If skb_mod is SYN-ACK, aka, mirror client case
+                 * check if we has send fake SYN-ACK
+                 */
+                if(tcp_header->syn && this_tcp_info->seq_rmhost_fake)
+                {
+                    this_tcp_info->seq_rmhost = ntohl(tcp_header->seq);
+                    set_tcp_state ( skb_mod, NULL );
+                    kfree_skb(skb_mod);
+                    goto send_skmod_finish;
+                }
+                /*
+                 * setup ack seq
+                 */
                 if ( seq_mirror > seq_server )
                     tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server ) );
                 else
                     tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror ) );
+                /*
+                 * setup seq number
+                 */
+                if ( seq_rmhost_fake > seq_rmhost )
+                    tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) + ( seq_rmhost_fake - seq_rmhost ) );
+                else if ( seq_rmhost_fake < seq_rmhost )
+                    tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
             }
 
-            if(TCP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port)
-                tcp_header->dest = htons(TCP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port);
+            if(this_tcp_info->mirror_port)
+                tcp_header->dest = htons(this_tcp_info->mirror_port);
 
             set_tcp_state ( skb_mod, NULL );
             send_skbmod ( bd->p, skb_mod );
+send_skmod_finish:
             kfree(bd->p);
             kfree(bd);
         }
@@ -450,7 +478,15 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         {
             this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
             this_tcp_info->mirror_port = ntohs ( tcp_header->source );
+            if( (!tcp_header->ack) && (peek_data(&this_tcp_info->buffers.packet_buffer) == NULL) )
+            {
+                respond_tcp_syn_ack(skb, skb->dev);
+                this_tcp_info->seq_rmhost_fake = FAKE_SEQ;
+            }
         }
+        /*
+         * record current playback seq number
+         */
         if(ntohl(tcp_header->seq) >= this_tcp_info->seq_current)
         {
             if ( tcp_header->syn || tcp_header->fin )
