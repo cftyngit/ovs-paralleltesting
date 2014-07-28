@@ -417,6 +417,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
                 tcp_header->dest = htons(this_tcp_info->mirror_port);
 
             set_tcp_state ( skb_mod, NULL );
+            setup_options(skb_mod, this_tcp_info);
             send_skbmod ( bd->p, skb_mod );
 send_skmod_finish:
             kfree(bd->p);
@@ -466,6 +467,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        u32 this_tsval = get_tsval(skb);
 
         memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
         data[data_size] = '\0';
@@ -473,6 +475,11 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             printk ( KERN_INFO "pd_action_from_mirror TCP data %d: %s\n", data_size, data );
 
         kfree ( data );
+        /*
+         * if get_tsval return 0, means this packet doesn't set tsval => doesn't need to update
+         */
+        if(this_tsval != 0)
+            this_tcp_info->tsval_current = this_tsval;
 
         if ( tcp_header->syn /*&& tcp_header->ack*/ )
         {
@@ -480,7 +487,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             this_tcp_info->mirror_port = ntohs ( tcp_header->source );
             if( (!tcp_header->ack) && (peek_data(&this_tcp_info->buffers.packet_buffer) == NULL) )
             {
-                respond_tcp_syn_ack(skb, skb->dev);
+                respond_tcp_syn_ack(skb, this_tcp_info);
                 this_tcp_info->seq_rmhost_fake = FAKE_SEQ;
             }
         }
@@ -582,7 +589,7 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-
+        printk("tcp timestamp value = %d\n", get_tsval(skb));
         memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
         data[data_size] = '\0';
 
