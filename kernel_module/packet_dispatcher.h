@@ -25,6 +25,8 @@
 #include "common.h"
 #include "connect_state.h"
 #include "l4proto/tcp.h"
+#include "util/compare_buffer.h"
+#include "packet_comparer.h"
 
 /*union ip
 {

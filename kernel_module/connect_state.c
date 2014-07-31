@@ -19,6 +19,8 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
                 memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
                 ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
+                INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
+                INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
                 radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             }
             break;
@@ -28,6 +30,8 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             {
                 get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
                 memset(get_proto_state, 0, sizeof(struct udp_conn_info));
+                INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
+                INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
                 radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
             }
             break;
@@ -44,11 +48,15 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
             memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
             ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
+            INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
+            INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:
             get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
             memset(get_proto_state, 0, sizeof(struct udp_conn_info));
+            INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
+            INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
             radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
             break;
         }

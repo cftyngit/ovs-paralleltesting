@@ -2,6 +2,7 @@
 #define __CONNECT_STATE_H__
 
 #include <linux/vmalloc.h>
+#include <linux/list.h>
 
 #include "common.h"
 #include "ovs_func.h"
@@ -17,10 +18,13 @@ struct buf_packet
 struct commom_buffers
 {
     struct queue_list_head packet_buffer;
+    struct list_head target_buffer;
+    struct list_head mirror_buffer;
 };
 
 struct tcp_conn_info
 {
+    struct commom_buffers buffers;
     u32 seq_rmhost;
     u32 seq_rmhost_fake;
     u32 seq_server;
@@ -31,7 +35,6 @@ struct tcp_conn_info
     int state;
     u16 mirror_port;
     u32 tsval_current;
-    struct commom_buffers buffers;
 };
 
 #define TCP_CONN_INFO_INIT \
@@ -48,9 +51,11 @@ struct tcp_conn_info
 
 struct udp_conn_info
 {
-    u16 mirror_port;
-    size_t unlock;
     struct commom_buffers buffers;
+    u16 mirror_port;
+    u32 current_seq_mirror;
+    u32 current_seq_target;
+    size_t unlock;
 };
 
 #define UDP_CONN_INFO_INIT \

@@ -94,7 +94,6 @@ void set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
     ip.i = skb_client ? ip_header->saddr : ip_header->daddr;
     old_state = tcp_state_get(&conn_info_set, ip, port);
 
-    printk ( KERN_INFO "old_state %d\n", old_state );
     switch ( old_state )
     {
     case TCP_STATE_CLOSED:
@@ -262,11 +261,11 @@ int pd_check_action ( struct sk_buff *skb )
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
 
-    if ( 0x0800 != eth_type )
+    if ( ETH_P_IP != eth_type )
         return PT_ACTION_CONTINUE;
 
     ip_header = ip_hdr ( skb );
-    if ( ip_header->protocol != UDP_PROTO && ip_header->protocol != TCP_PROTO )
+    if ( ip_header->protocol != IPPROTO_UDP && ip_header->protocol != IPPROTO_TCP )
         return PT_ACTION_CONTINUE;
 
     ip_src.i = ip_header->saddr;
@@ -301,14 +300,14 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     struct queue_list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
     printk("into function: %s\n", __func__);
-    if ( UDP_PROTO == proto )
+    if ( IPPROTO_UDP == proto )
         packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
     else
         packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
 
     switch ( proto )
     {
-    case UDP_PROTO:
+    case IPPROTO_UDP:
         bd = get_data ( packet_buf );
         if( NULL == bd )
         {
@@ -336,7 +335,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
         }
         del_queue ( packet_buf );
         break;
-    case TCP_PROTO:
+    case IPPROTO_TCP:
         while ( 1 )
         {
             int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
@@ -436,6 +435,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
+    struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
     printk("into function: %s\n", __func__);
     if ( UDP_PROTO == ip_header->protocol )
     {
@@ -445,13 +445,19 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
 
-        memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
-
-        data[data_size] = '\0';
-        if ( data_size )
-            printk ( KERN_INFO "pd_action_from_mirror UDP data %d: %s\n", data_size, data );
-
-        kfree ( data );
+        if(data_size)
+        {
+            memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
+            bn->payload.data = data;
+            bn->payload.length = data_size;
+            bn->payload.remain = data_size;
+            bn->seq_num = this_udp_info->current_seq_mirror;
+            bn->seq_num_next = bn->seq_num + data_size;
+            bn->opt_key = get_tsval(skb);
+            this_udp_info->current_seq_mirror = bn->seq_num_next;
+            compare_buffer_insert(bn, &this_udp_info->buffers.mirror_buffer);
+            do_compare(&this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
+        }
         this_udp_info->mirror_port = ntohs ( udp_header->source );
         if(this_udp_info->buffers.packet_buffer.count == 0)
         {
@@ -469,12 +475,18 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
         u32 this_tsval = get_tsval(skb);
 
-        memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
-        data[data_size] = '\0';
-        if ( data_size )
-            printk ( KERN_INFO "pd_action_from_mirror TCP data %d: %s\n", data_size, data );
-
-        kfree ( data );
+        if(data_size)
+        {
+            memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
+            bn->payload.data = data;
+            bn->payload.length = data_size;
+            bn->payload.remain = data_size;
+            bn->seq_num = tcp_header->seq;
+            bn->seq_num_next = bn->seq_num + data_size;
+            bn->opt_key = get_tsval(skb);
+            compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
+            do_compare(&this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
+        }
         /*
          * if get_tsval return 0, means this packet doesn't set tsval => doesn't need to update
          */
@@ -545,7 +557,6 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
             add_queue ( packet_buf );
 
         add_data ( packet_buf, bd );
-        printk("add data %u\n", ntohl ( tcp_header->seq ));
         switch ( tcp_state_get(&conn_info_set, ip, client_port) )
         {
         case TCP_STATE_SYN_RCVD:
@@ -564,6 +575,7 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
+    struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
     if ( UDP_PROTO == ip_header->protocol )
     {
         struct udphdr* udp_header = udp_hdr ( skb );
@@ -578,9 +590,19 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         else
             this_udp_info->unlock--;
 
-        memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
-        data[data_size] = '\0';
-        kfree ( data );
+        if(data_size)
+        {
+            memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
+            bn->payload.data = data;
+            bn->payload.length = data_size;
+            bn->payload.remain = data_size;
+            bn->seq_num = this_udp_info->current_seq_target;
+            bn->seq_num_next = bn->seq_num + data_size;
+            bn->opt_key = get_tsval(skb);
+            this_udp_info->current_seq_target = bn->seq_num_next;
+            compare_buffer_insert(bn, &this_udp_info->buffers.target_buffer);
+            do_compare(&this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
+        }
     }
     if ( TCP_PROTO == ip_header->protocol )
     {
@@ -588,12 +610,19 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         unsigned short client_port  = ntohs ( tcp_header->dest );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-        printk("tcp timestamp value = %d\n", get_tsval(skb));
-        memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
-        data[data_size] = '\0';
-
-        kfree ( data );
+        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
+        if(data_size)
+        {
+            memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
+            bn->payload.data = data;
+            bn->payload.length = data_size;
+            bn->payload.remain = data_size;
+            bn->seq_num = tcp_header->seq;
+            bn->seq_num_next = bn->seq_num + data_size;
+            bn->opt_key = get_tsval(skb);
+            compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
+            do_compare(&this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
+        }
 
         if ( tcp_header->syn )
         {
