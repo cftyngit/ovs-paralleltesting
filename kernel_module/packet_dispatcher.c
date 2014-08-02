@@ -341,30 +341,14 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
             struct tcphdr* tcp_header;
             struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
-
+            u32 seq_server = this_tcp_info->seq_server;
+            u32 seq_mirror = this_tcp_info->seq_mirror;
+            u32 seq_tmp = 0;
+            struct iphdr* ip_header = NULL;
             if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
                 break;
 
             bd = peek_data ( packet_buf );
-            if(bd != NULL)
-            {
-                u32 seq_server = this_tcp_info->seq_server;
-                u32 seq_mirror = this_tcp_info->seq_mirror;
-                u32 seq_tmp = 0;
-                skb_mod = bd->skb;
-                tcp_header = tcp_hdr ( skb_mod );
-                if ( seq_mirror > seq_server )
-                    seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
-                else
-                    seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
-
-                printk("seq_t %u, seq_c %u\n", seq_tmp, this_tcp_info->seq_current);
-
-                if(seq_tmp > this_tcp_info->seq_next)
-                    break;
-            }
-            bd = get_data ( packet_buf );
-
             if ( NULL == bd )
             {
                 if( 1 == packet_buf->count )
@@ -373,16 +357,32 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
                 del_queue ( packet_buf );
                 break;
             }
+            /*
+             * peek new packet from packet buffer to see whether it's ack seq is newer
+             * than the lastest packet from mirror
+             */
             skb_mod = bd->skb;
             tcp_header = tcp_hdr ( skb_mod );
-            pd_modify_ip_mac ( skb_mod );
+            ip_header = ip_hdr ( skb_mod );
+            if ( seq_mirror > seq_server )
+                seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
+            else
+                seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
+
+            printk("seq_t %u, seq_c %u\n", seq_tmp, this_tcp_info->seq_current);
+
+            if(seq_tmp > this_tcp_info->seq_next)
+                break;
+            /*
+             * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
+             * we can remove it from packet buffer and send to mirror
+             */
+            bd = get_data ( packet_buf );
             /*
              * SYN packet doesn't need to chenge seq number
              */
             if ( !(tcp_header->syn && !tcp_header->ack) )
             {
-                unsigned int seq_server = this_tcp_info->seq_server;
-                unsigned int seq_mirror = this_tcp_info->seq_mirror;
                 u32 seq_rmhost = this_tcp_info->seq_rmhost;
                 u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
                 /*
@@ -417,6 +417,10 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
 
             set_tcp_state ( skb_mod, NULL );
             setup_options(skb_mod, this_tcp_info);
+
+            pd_modify_ip_mac ( skb_mod );
+            tcp_header->check = 0;
+            tcp_header->check = tcp_v4_check(skb_mod->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_mod->csum);
             send_skbmod ( bd->p, skb_mod );
 send_skmod_finish:
             kfree(bd->p);
@@ -472,7 +476,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         unsigned short client_port  = ntohs ( tcp_header->dest );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         u32 this_tsval = get_tsval(skb);
 
         if(data_size)
@@ -504,7 +508,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             }
         }
         /*
-         * record current playback seq number
+         * record lastest packet seq number
          */
         if(ntohl(tcp_header->seq) >= this_tcp_info->seq_current)
         {

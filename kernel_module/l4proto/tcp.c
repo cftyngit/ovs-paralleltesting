@@ -108,7 +108,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
     ip_header->ttl = 0x40;
     ip_header->tot_len = htons(skb_new->len + sizeof(tcp_options) + (((TCPOLEN_TIMESTAMP>>2)+1)<<2));
     ip_header->check = 0;
-    ip_header->check = ip_fast_csum(ip_header, ip_header->ihl);
+    ip_send_check(ip_header);
     /* caculate checksum */
 
     pdata = skb_put(skb_new, sizeof(tcp_options));
