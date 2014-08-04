@@ -229,7 +229,7 @@ u32 __get_timestamp(const struct sk_buff* skb, int off)
                 return 0;
             if (opsize > length)
                 return 0; /* don't parse partial options */
-            if ((TCPOPT_TIMESTAMP == opcode) && (opsize == TCPOLEN_TIMESTAMP))
+            if ((TCPOPT_TIMESTAMP == opcode) && (TCPOLEN_TIMESTAMP == opsize))
                 return get_unaligned_be32(ptr + off);
 
             ptr += opsize-2;
@@ -237,4 +237,45 @@ u32 __get_timestamp(const struct sk_buff* skb, int off)
         }
     }
     return 0;
+}
+
+u8 get_window_scaling(const struct sk_buff* skb)
+{
+    const struct tcphdr* tcp_header = tcp_hdr(skb);
+    int length = (tcp_header->doff * 4) - sizeof(struct tcphdr);
+    const unsigned char* ptr = (const unsigned char *)(tcp_header + 1);
+
+    while (length > 0)
+    {
+        int opcode = *ptr++;
+        int opsize;
+
+        switch (opcode)
+        {
+        case TCPOPT_EOL:
+            return 0;
+        case TCPOPT_NOP:        /* Ref: RFC 793 section 3.1 */
+            length--;
+            continue;
+        default:
+            opsize = *ptr++;
+            if (opsize < 2) /* "silly options" */
+                return 0;
+            if (opsize > length)
+                return 0; /* don't parse partial options */
+            if ((TCPOPT_WINDOW == opcode) && (TCPOLEN_WINDOW == opsize))
+            {
+                __u8 snd_wscale = *(__u8 *)ptr;
+                if (snd_wscale > 14) 
+                {
+                    net_info_ratelimited("%s: Illegal window scaling value %d >14 received\n",  __func__, snd_wscale);  
+                    snd_wscale = 14;  
+                }
+                return snd_wscale;
+            }
+            ptr += opsize-2;
+            length -= opsize;
+        }
+    }
+        return 0;
 }

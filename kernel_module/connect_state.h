@@ -34,6 +34,8 @@ struct tcp_conn_info
     u32 seq_next;
     int state;
     u16 mirror_port;
+    u8 window_scale;
+    u32 window_current;
     u32 tsval_current;
 };
 

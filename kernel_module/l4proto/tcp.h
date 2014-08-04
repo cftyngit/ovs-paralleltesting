@@ -14,6 +14,7 @@ int modify_tcp_header( struct sk_buff* skb_mod, union my_ip_type ip, u16 client_
 int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* tcp_info);
 void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info);
 u32 __get_timestamp(const struct sk_buff* skb, int off);
+u8 get_window_scaling(const struct sk_buff* skb);
 
 #define get_tsval(skb) \
     (__get_timestamp(skb, 0))

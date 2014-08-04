@@ -344,6 +344,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             u32 seq_server = this_tcp_info->seq_server;
             u32 seq_mirror = this_tcp_info->seq_mirror;
             u32 seq_tmp = 0;
+            size_t data_size = 0;
             struct iphdr* ip_header = NULL;
             if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
                 break;
@@ -364,14 +365,15 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             skb_mod = bd->skb;
             tcp_header = tcp_hdr ( skb_mod );
             ip_header = ip_hdr ( skb_mod );
+            data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
             if ( seq_mirror > seq_server )
                 seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
             else
                 seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
 
             printk("seq_t %u, seq_c %u\n", seq_tmp, this_tcp_info->seq_current);
-
-            if(seq_tmp > this_tcp_info->seq_next)
+            printk("%u window_c %u, data_size %u\n", ntohl ( tcp_header->seq ), this_tcp_info->window_current, data_size);
+            if(seq_tmp > this_tcp_info->seq_next || data_size > this_tcp_info->window_current)
                 break;
             /*
              * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
@@ -411,7 +413,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
                 else if ( seq_rmhost_fake < seq_rmhost )
                     tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
             }
-
+            this_tcp_info->window_current -= data_size;
             if(this_tcp_info->mirror_port)
                 tcp_header->dest = htons(this_tcp_info->mirror_port);
 
@@ -496,11 +498,17 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
          */
         if(this_tsval != 0)
             this_tcp_info->tsval_current = this_tsval;
-
+        /*
+         * setup window_current before SYN packet setup window scale option
+         * because window size in SYN packet is 0
+         */
+        this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
+        printk("setup window_c = %u\n", this_tcp_info->window_current);
         if ( tcp_header->syn /*&& tcp_header->ack*/ )
         {
             this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
             this_tcp_info->mirror_port = ntohs ( tcp_header->source );
+            this_tcp_info->window_scale = get_window_scaling(skb);
             if( (!tcp_header->ack) && (peek_data(&this_tcp_info->buffers.packet_buffer) == NULL) )
             {
                 respond_tcp_syn_ack(skb, this_tcp_info);
