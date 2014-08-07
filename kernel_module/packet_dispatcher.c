@@ -1,11 +1,6 @@
 #include "packet_dispatcher.h"
 #include "tcp_state.h"
 
-struct buf_data
-{
-    struct sk_buff* skb;
-    struct vport* p;
-};
 
 struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
 
@@ -74,96 +69,6 @@ void print_skb ( struct sk_buff *skb )
         }
     }
     printk ( KERN_INFO "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" );
-    return;
-}
-
-void set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
-{
-    struct tcphdr* tcp_header;
-    struct iphdr* ip_header;
-    unsigned short port;
-    union my_ip_type ip;
-    int old_state, new_state;
-
-    if ( ! ( ( skb_client == NULL ) ^ ( skb_mirror == NULL ) ) )
-        return;
-
-    tcp_header = skb_client ? tcp_hdr ( skb_client ) : tcp_hdr ( skb_mirror );
-    ip_header = skb_client ? ip_hdr ( skb_client ) : ip_hdr ( skb_mirror );
-    port = ntohs ( skb_client ? tcp_header->source : tcp_header->dest );
-    ip.i = skb_client ? ip_header->saddr : ip_header->daddr;
-    old_state = tcp_state_get(&conn_info_set, ip, port);
-
-    switch ( old_state )
-    {
-    case TCP_STATE_CLOSED:
-    case TCP_STATE_LISTEN:
-        if ( skb_mirror && tcp_header->syn && !tcp_header->ack )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_SYN_SEND);
-
-        if ( skb_client && tcp_header->syn && !tcp_header->ack )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_SYN_RCVD);
-
-        break;
-    case TCP_STATE_SYN_SEND:
-        if ( skb_client && tcp_header->syn && tcp_header->ack )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_ESTABLISHED);
-
-        break;
-    case TCP_STATE_SYN_RCVD:
-        if ( skb_mirror && tcp_header->syn && tcp_header->ack )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_ESTABLISHED);
-
-        break;
-    case TCP_STATE_ESTABLISHED:
-        if ( tcp_header->fin )
-        {
-            if ( skb_client )
-                tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT1);
-            else
-                tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT1);
-
-            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
-        }
-        break;
-    case TCP_STATE_FIN_WAIT1:
-        if ( skb_mirror && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT2);
-    case TCP_STATE_FIN_WAIT2:
-        if ( skb_mirror && tcp_header->fin )
-        {
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_TIME_WAIT);
-            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
-        }
-        break;
-    case TCP_STATE_TIME_WAIT:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
-        {
-            tcp_state_reset(&conn_info_set, ip, port);
-        }
-        break;
-    case TCP_STATE_CLOSE_WAIT1:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT2);
-
-    case TCP_STATE_CLOSE_WAIT2:
-        if ( skb_client && tcp_header->fin )
-        {
-            tcp_state_set(&conn_info_set, ip, port, TCP_STATE_LAST_ACK);
-            TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin = ntohl ( tcp_header->seq );
-        }
-        break;
-    case TCP_STATE_LAST_ACK:
-        if ( skb_mirror && ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin )
-        {
-            tcp_state_reset(&conn_info_set, ip, port);
-        }
-        break;
-    }
-    new_state = tcp_state_get(&conn_info_set, ip, port);
-    if(old_state != new_state )
-        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "client" : "server", old_state, new_state );
-
     return;
 }
 
@@ -260,7 +165,7 @@ int pd_check_action ( struct sk_buff *skb )
     union my_ip_type ip_src, ip_dst;
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
-
+    //kthread_run(test_thread, NULL, "tcp_playbak_%d", 1);
     if ( ETH_P_IP != eth_type )
         return PT_ACTION_CONTINUE;
 
@@ -336,98 +241,9 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
         del_queue ( packet_buf );
         break;
     case IPPROTO_TCP:
-        while ( 1 )
-        {
-            int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
-            struct tcphdr* tcp_header;
-            struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
-            u32 seq_server = this_tcp_info->seq_server;
-            u32 seq_mirror = this_tcp_info->seq_mirror;
-            u32 seq_tmp = 0;
-            size_t data_size = 0;
-            struct iphdr* ip_header = NULL;
-            if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
-                break;
-
-            bd = peek_data ( packet_buf );
-            if ( NULL == bd )
-            {
-                if( 1 == packet_buf->count )
-                    break;
-
-                del_queue ( packet_buf );
-                break;
-            }
-            /*
-             * peek new packet from packet buffer to see whether it's ack seq is newer
-             * than the lastest packet from mirror
-             */
-            skb_mod = bd->skb;
-            tcp_header = tcp_hdr ( skb_mod );
-            ip_header = ip_hdr ( skb_mod );
-            data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-            if ( seq_mirror > seq_server )
-                seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
-            else
-                seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
-
-            printk("seq_t %u, seq_c %u\n", seq_tmp, this_tcp_info->seq_current);
-            printk("%u window_c %u, data_size %u\n", ntohl ( tcp_header->seq ), this_tcp_info->window_current, data_size);
-            if(seq_tmp > this_tcp_info->seq_next || data_size > this_tcp_info->window_current)
-                break;
-            /*
-             * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
-             * we can remove it from packet buffer and send to mirror
-             */
-            bd = get_data ( packet_buf );
-            /*
-             * SYN packet doesn't need to chenge seq number
-             */
-            if ( !(tcp_header->syn && !tcp_header->ack) )
-            {
-                u32 seq_rmhost = this_tcp_info->seq_rmhost;
-                u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
-                /*
-                 * If skb_mod is SYN-ACK, aka, mirror client case
-                 * check if we has send fake SYN-ACK
-                 */
-                if(tcp_header->syn && this_tcp_info->seq_rmhost_fake)
-                {
-                    this_tcp_info->seq_rmhost = ntohl(tcp_header->seq);
-                    set_tcp_state ( skb_mod, NULL );
-                    kfree_skb(skb_mod);
-                    goto send_skmod_finish;
-                }
-                /*
-                 * setup ack seq
-                 */
-                if ( seq_mirror > seq_server )
-                    tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server ) );
-                else
-                    tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror ) );
-                /*
-                 * setup seq number
-                 */
-                if ( seq_rmhost_fake > seq_rmhost )
-                    tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) + ( seq_rmhost_fake - seq_rmhost ) );
-                else if ( seq_rmhost_fake < seq_rmhost )
-                    tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
-            }
-            this_tcp_info->window_current -= data_size;
-            if(this_tcp_info->mirror_port)
-                tcp_header->dest = htons(this_tcp_info->mirror_port);
-
-            set_tcp_state ( skb_mod, NULL );
-            setup_options(skb_mod, this_tcp_info);
-
-            pd_modify_ip_mac ( skb_mod );
-            tcp_header->check = 0;
-            tcp_header->check = tcp_v4_check(skb_mod->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_mod->csum);
-            send_skbmod ( bd->p, skb_mod );
-send_skmod_finish:
-            kfree(bd->p);
-            kfree(bd);
-        }
+    {
+        tcp_playback_packet( ip, client_port, cause);
+    }
         break;
     default:
         kfree_skb ( skb_mod );
@@ -502,7 +318,15 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
          * setup window_current before SYN packet setup window scale option
          * because window size in SYN packet is 0
          */
-        this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
+        if(tcp_header->ack)
+        {
+            u32 respond_window = (ntohs(tcp_header->window) << this_tcp_info->window_scale);
+            u32 send_size = abs(this_tcp_info->seq_last_send - ntohl(tcp_header->ack_seq));
+            printk("[%s] rep_win: %u, send_size: %u\n", __func__, respond_window, send_size);
+            this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
+        }
+        else
+            this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
         printk("setup window_c = %u\n", this_tcp_info->window_current);
         if ( tcp_header->syn /*&& tcp_header->ack*/ )
         {

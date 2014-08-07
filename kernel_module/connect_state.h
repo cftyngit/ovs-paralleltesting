@@ -1,7 +1,6 @@
 #ifndef __CONNECT_STATE_H__
 #define __CONNECT_STATE_H__
 
-#include <linux/vmalloc.h>
 #include <linux/list.h>
 
 #include "common.h"
@@ -32,6 +31,7 @@ struct tcp_conn_info
     u32 seq_fin;
     u32 seq_current;
     u32 seq_next;
+    u32 seq_last_send;
     int state;
     u16 mirror_port;
     u8 window_scale;
@@ -89,11 +89,18 @@ struct host_conn_info_set
 void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 proto, u16 port);
 int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 port);
 
-#define tcp_state_get(conn_info_set, ip, port) \
-    (((struct tcp_conn_info*)query_connect_info(conn_info_set, ip, IPPROTO_TCP, port))->state)
+#define tcp_state_get(conn_info_set, ip, port) ({\
+    int ret; \
+    struct tcp_conn_info* this_tcp_info = query_connect_info(conn_info_set, ip, IPPROTO_TCP, port); \
+    ret = this_tcp_info->state; \
+    ret; \
+})
 
-#define tcp_state_set(conn_info_set, ip, port, value) \
-    (((struct tcp_conn_info*)query_connect_info(conn_info_set, ip, IPPROTO_TCP, port))->state = value)
+#define tcp_state_set(conn_info_set, ip, port, value) ({\
+    struct tcp_conn_info* this_tcp_info = query_connect_info(conn_info_set, ip, IPPROTO_TCP, port); \
+    this_tcp_info->state = value; \
+    value; \
+})
 
 #define TCP_CONN_INFO(conn_info_set, ip, port) \
     ((struct tcp_conn_info*)query_connect_info((conn_info_set), (ip), (IPPROTO_TCP), (port)))

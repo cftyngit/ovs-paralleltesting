@@ -6,6 +6,7 @@
 #include "hook.h"
 #include "ovs_func.h"
 #include "k2u.h"
+#include "l4proto/tcp.h"
 
 #include "packet_dispatcher.h"
 
