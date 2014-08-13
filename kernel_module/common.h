@@ -21,11 +21,11 @@ struct buf_data
     struct vport* p;
 };
 
-struct playback_args
+struct connection_info
 {
     union my_ip_type ip;
-    u16 client_port;
-    u8 cause;
+    u16 port;
+    u8 proto;
 };
 
 int pd_modify_ip_mac ( struct sk_buff* skb_mod );

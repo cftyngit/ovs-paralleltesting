@@ -12,17 +12,17 @@ void del_buffer_node(struct buffer_node* bn)
     kfree(bn);
 }
 
-int do_compare(struct list_head* buffer1, struct list_head* buffer2, compare_func compare)
+int do_compare(struct connection_info* con_info, struct list_head* buffer1, struct list_head* buffer2, compare_func compare)
 {
     struct list_head *iterator1, *iterator2;
     struct list_head *tmp1, *tmp2;
     int should_break = 0;
     if(list_empty(buffer1) || list_empty(buffer2))
         return -1;
-    
+
     if(compare == NULL)
         compare = simple_comparer;
-    
+
     while(!should_break)
     {
         struct buffer_node* compare_target1 = NULL;
@@ -80,12 +80,14 @@ int do_compare(struct list_head* buffer1, struct list_head* buffer2, compare_fun
             }
             if ( !compare ( cmp_data1, cmp_data2, compare_size ) )
             {
-                printk ( KERN_INFO "compare result: the same >>>> %s <<<<\n", compare_target1->payload.data );
+                //printk ( KERN_INFO "compare result: the same >>>> %s <<<<\n", compare_target1->payload.data );
+                
             }
             else
             {
-                printk ( KERN_INFO "compare result: different %s <===> %s\n", compare_target1->payload.data, compare_target2->payload.data );
+                //printk ( KERN_INFO "compare result: different %s <===> %s\n", compare_target1->payload.data, compare_target2->payload.data );
             }
+
             compare_target1->payload.remain -= compare_size;
             compare_target2->payload.remain -= compare_size;
             if(compare_target1->payload.remain == 0)
