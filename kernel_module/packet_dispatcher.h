@@ -21,11 +21,11 @@
 #define TCP_PROTO 0x06
 #define UDP_PROTO 0x11
 
-#include "util/queue_list.h"
 #include "common.h"
 #include "connect_state.h"
 #include "l4proto/tcp.h"
 #include "util/compare_buffer.h"
+#include "util/packet_buffer.h"
 #include "packet_comparer.h"
 
 /*union ip

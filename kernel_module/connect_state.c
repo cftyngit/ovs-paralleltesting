@@ -19,6 +19,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
                 memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
                 ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
+                INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
                 radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
@@ -30,6 +31,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             {
                 get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
                 memset(get_proto_state, 0, sizeof(struct udp_conn_info));
+                INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
                 radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
@@ -48,6 +50,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
             memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
             ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
+            INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
@@ -55,6 +58,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
         case IPPROTO_UDP:
             get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
             memset(get_proto_state, 0, sizeof(struct udp_conn_info));
+            INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
             radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
@@ -76,7 +80,7 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
     get_proto_state = radix_tree_lookup(&(get_conn_info->tcp_info_set), port);
     if(get_proto_state)
     {
-        clean_queue_list(&(get_proto_state->buffers.packet_buffer));
+        pkt_buffer_cleanup(&(get_proto_state->buffers.packet_buffer));
         radix_tree_delete(&(get_conn_info->tcp_info_set), port);
         kfree(get_proto_state);
         get_conn_info->tcp_info_count--;

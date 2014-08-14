@@ -7,6 +7,7 @@
 #include <linux/kthread.h>
 #include "../common.h"
 #include "../connect_state.h"
+#include "../util/packet_buffer.h"
 
 #define FAKE_SEQ 4321
 #define FAKE_TSVAL 123

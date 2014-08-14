@@ -371,7 +371,7 @@ void set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
 int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 {
     struct sk_buff* skb_mod = NULL;
-    struct queue_list_head* packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
+    struct list_head* packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
     struct buf_data* bd = NULL;
     struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
     struct tcphdr* tcp_header;
@@ -388,13 +388,9 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
             break;
 
-        bd = peek_data ( packet_buf );
+        bd = pkt_buffer_peek_data ( packet_buf );
         if ( NULL == bd )
         {
-            if( 1 == packet_buf->count )
-                break;
-
-            del_queue ( packet_buf );
             break;
         }
         /*
@@ -418,7 +414,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
-        bd = get_data ( packet_buf );
+        bd = pkt_buffer_get_data ( packet_buf );
         /*
          * SYN packet doesn't need to chenge seq number
          */

@@ -5,8 +5,8 @@
 
 #include "common.h"
 #include "ovs_func.h"
-#include "util/queue_list.h"
 #include "tcp_state.h"
+#include "util/packet_buffer.h"
 
 struct buf_packet
 {
@@ -16,7 +16,7 @@ struct buf_packet
 
 struct commom_buffers
 {
-    struct queue_list_head packet_buffer;
+    struct list_head packet_buffer;
     struct list_head target_buffer;
     struct list_head mirror_buffer;
 };
@@ -57,6 +57,7 @@ struct udp_conn_info
     u16 mirror_port;
     u32 current_seq_mirror;
     u32 current_seq_target;
+    u32 current_seq_rmhost;
     size_t unlock;
 };
 
