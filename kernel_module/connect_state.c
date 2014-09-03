@@ -16,12 +16,16 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->tcp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
+                get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
+                if(NULL == get_proto_state)
+                    break;
+
                 memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
                 ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
+                ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
                 radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             }
             break;
@@ -29,7 +33,10 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->udp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
+                get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
+                if(NULL == get_proto_state)
+                    break;
+
                 memset(get_proto_state, 0, sizeof(struct udp_conn_info));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
@@ -41,22 +48,32 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
     }
     else
     {
-        get_conn_info = kmalloc(sizeof(struct host_conn_info), GFP_KERNEL);
-        INIT_RADIX_TREE(&(get_conn_info->tcp_info_set), GFP_KERNEL);
-        INIT_RADIX_TREE(&(get_conn_info->udp_info_set), GFP_KERNEL);
+        get_conn_info = kmalloc(sizeof(struct host_conn_info), GFP_ATOMIC);
+        if(NULL == get_conn_info)
+            return NULL;
+
+        INIT_RADIX_TREE(&(get_conn_info->tcp_info_set), GFP_ATOMIC);
+        INIT_RADIX_TREE(&(get_conn_info->udp_info_set), GFP_ATOMIC);
         switch(proto)
         {
         case IPPROTO_TCP:
-            get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
+            get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
+            if(NULL == get_proto_state)
+                break;
+
             memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
             ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
+            ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:
-            get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
+            get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
+            if(NULL == get_proto_state)
+                break;
+
             memset(get_proto_state, 0, sizeof(struct udp_conn_info));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
@@ -85,7 +102,6 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
         kfree(get_proto_state);
         get_conn_info->tcp_info_count--;
     }
-
     if( get_conn_info->tcp_info_count || get_conn_info->udp_info_count )
         return 1;
 

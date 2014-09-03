@@ -21,6 +21,8 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, struct list_head* head);
 
 struct buf_data* pkt_buffer_get_data(struct list_head* head);
 struct buf_data* pkt_buffer_peek_data(struct list_head* head);
+struct buf_data* pkt_buffer_peek_data_from_ptr(struct list_head* head, struct list_head** ptr);
+
 int pkt_buffer_cleanup(struct list_head* head);
 
 int pkt_buffer_barrier_add(struct list_head* head);

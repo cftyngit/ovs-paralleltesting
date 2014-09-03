@@ -30,5 +30,6 @@ struct connection_info
 
 int pd_modify_ip_mac ( struct sk_buff* skb_mod );
 void send_skbmod ( struct vport *p, struct sk_buff *skb_mod );
+void print_skb(struct sk_buff *skb);
 
 #endif

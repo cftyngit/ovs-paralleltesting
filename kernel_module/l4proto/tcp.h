@@ -18,7 +18,14 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 u32 __get_timestamp(const struct sk_buff* skb, int off);
 u8 get_window_scaling(const struct sk_buff* skb);
 int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause);
-void set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror );
+int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror );
+void slide_send_window(struct tcp_conn_info* this_tcp_info);
+int ack_this_packet(const struct sk_buff* skb);
+
+u32 seq_to_target(const u32 seq_mirror, const struct tcp_conn_info* tcp_info);
+u32 seq_to_mirror(const u32 seq_target, const struct tcp_conn_info* tcp_info);
+//u32 ackseq_to_target(const u32 ackseq_mirror, const struct tcp_conn_info* tcp_info);
+//u32 ackseq_to_mirror(const u32 ackseq_target, const struct tcp_conn_info* tcp_info);
 
 #define get_tsval(skb) \
     (__get_timestamp(skb, 0))

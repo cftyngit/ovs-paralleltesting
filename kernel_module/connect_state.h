@@ -24,19 +24,25 @@ struct commom_buffers
 struct tcp_conn_info
 {
     struct commom_buffers buffers;
+    struct list_head* playback_ptr;
     u32 seq_rmhost;
-    u32 seq_rmhost_fake;
+    u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
     u32 seq_server;
     u32 seq_mirror;
     u32 seq_fin;
     u32 seq_current;
     u32 seq_next;
     u32 seq_last_send;
+    u32 timestamp_last_from_target;
+    u32 ackseq_last_from_target;
+    u32 ackseq_last_playback;
     int state;
+    u32 window_current;             //remain window size
+    size_t last_send_size;          //used in calculate remain window size from mirror ACK
+    u32 tsval_current;
+    u32 seq_last_ack;               //last ack from mirror
     u16 mirror_port;
     u8 window_scale;
-    u32 window_current;
-    u32 tsval_current;
 };
 
 #define TCP_CONN_INFO_INIT \
@@ -54,11 +60,11 @@ struct tcp_conn_info
 struct udp_conn_info
 {
     struct commom_buffers buffers;
-    u16 mirror_port;
     u32 current_seq_mirror;
     u32 current_seq_target;
     u32 current_seq_rmhost;
     size_t unlock;
+    u16 mirror_port;
 };
 
 #define UDP_CONN_INFO_INIT \
@@ -83,7 +89,7 @@ struct host_conn_info_set
 };
 
 #define HOST_CONN_INFO_SET_INIT   {           \
-    .conn_info_set = RADIX_TREE_INIT(GFP_KERNEL), \
+    .conn_info_set = RADIX_TREE_INIT(GFP_ATOMIC), \
     .count = 0,                            \
 }
 
@@ -93,14 +99,15 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
 #define tcp_state_get(conn_info_set, ip, port) ({\
     int ret; \
     struct tcp_conn_info* this_tcp_info = query_connect_info(conn_info_set, ip, IPPROTO_TCP, port); \
-    ret = this_tcp_info->state; \
+    ret = this_tcp_info != NULL ? this_tcp_info->state : -1; \
     ret; \
 })
 
 #define tcp_state_set(conn_info_set, ip, port, value) ({\
     struct tcp_conn_info* this_tcp_info = query_connect_info(conn_info_set, ip, IPPROTO_TCP, port); \
-    this_tcp_info->state = value; \
-    value; \
+    if(NULL != this_tcp_info) \
+        this_tcp_info->state = value; \
+    NULL != this_tcp_info ? value : -1; \
 })
 
 #define TCP_CONN_INFO(conn_info_set, ip, port) \

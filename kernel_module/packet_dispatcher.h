@@ -34,7 +34,6 @@
     unsigned int i;
 };*/
 
-void print_skb(struct sk_buff *skb);
 void init_packet_dispatcher(void);
 
 int pd_check_action(struct sk_buff *skb);
