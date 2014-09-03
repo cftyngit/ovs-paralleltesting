@@ -258,8 +258,6 @@ struct sk_buff* build_ack_sk_buff(struct sk_buff* skb, u32 seq_ack)
     struct tcphdr* sk_tcp_header = tcp_hdr(skb);
     struct net_device* netdev = skb->dev;
     u8 *pdata = NULL;
-    //const unsigned char tcp_options[] = "";
-    //u8 *pdata = NULL;
     __be32 dip = sk_ip_header->daddr;
     __be32 sip = sk_ip_header->saddr;
     u32 skb_len;
@@ -287,22 +285,15 @@ struct sk_buff* build_ack_sk_buff(struct sk_buff* skb, u32 seq_ack)
     skb_new->ip_summed = CHECKSUM_NONE;
     skb_new->priority = skb->priority;
 
-    //skb_put(skb_new, sizeof(struct ethhdr));
     /* 分配内存给ip头 */
     skb_set_network_header(skb_new, 0);
     skb_put(skb_new, sizeof(struct iphdr));
     /* 分配内存给tcp头 */
     skb_set_transport_header(skb_new, sizeof(struct iphdr));
     skb_put(skb_new, sizeof(struct tcphdr));
-    //return NULL;
     /* construct tcp header in skb */
     tcp_header = tcp_hdr(skb_new);
-    //memcpy (tcp_header, sk_tcp_header, sizeof(struct tcphdr));
-
-    //tcp_header->doff = (u32)( sizeof(struct tcphdr) ) >> 2;
-    //tcp_header->ack = 1;
     memset (tcp_header, 0, sizeof(struct tcphdr));
-    
     tcp_header->ack_seq = htonl(seq_ack);
     tcp_header->seq = sk_tcp_header->seq;
     tcp_header->source = sk_tcp_header->source;
@@ -348,16 +339,11 @@ struct sk_buff* build_ack_sk_buff(struct sk_buff* skb, u32 seq_ack)
      eth_header = (struct ethhdr *)skb_push(skb_new, sizeof(struct ethhdr));
      memset (eth_header, 0, sizeof(struct ethhdr));
      skb_set_mac_header(skb_new, 0);
-     //eth_header = eth_hdr(skb_new);
      memset (eth_header, 0, sizeof(struct ethhdr));
      memcpy(eth_header->h_dest, sk_eth_header->h_dest, ETH_ALEN);
      memcpy(eth_header->h_source, sk_eth_header->h_source, ETH_ALEN);
      eth_header->h_proto = htons(ETH_P_IP);
-     //printk("[%s] skb->head: %p\n", __func__, skb_new->head);
-     //printk("[%s] eth_header: %p, eth_hdr: %p\n", __func__, eth_header, eth_hdr(skb_new));
-     //printk("[%s] ip_header: %p, ip_hdr: %p\n", __func__, ip_header, ip_hdr(skb_new));
-     //printk("[%s] tcp_header: %p, tcp_hdr: %p\n", __func__, tcp_header, tcp_hdr(skb_new));
-     //print_skb(skb_new);
+
      return skb_new;
 }
 
@@ -589,7 +575,7 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
     }
     new_state = tcp_state_get(&conn_info_set, ip, port);
     if(old_state != new_state )
-        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "client" : "server", old_state, new_state );
+        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "rmhost" : "mirror", old_state, new_state );
 
     return state_reset;
 }
@@ -629,15 +615,14 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * peek new packet from packet buffer to see whether it's ack seq is newer
          * than the lastest packet from mirror
          */
-        
+
         skb_mod = skb_copy ( bd->skb, GFP_ATOMIC );
         tcp_header = tcp_hdr ( skb_mod );
         if ( seq_mirror > seq_server )
             seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
         else
             seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
-        
-        printk("seq_t %u, seq_c %u, seq_next %u\n", seq_tmp, this_tcp_info->seq_current, this_tcp_info->seq_next);
+
         if(seq_tmp > this_tcp_info->seq_next)
         {
             struct sk_buff* tmp = NULL;
@@ -667,7 +652,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         tcp_header = tcp_hdr ( skb_mod );
         ip_header = ip_hdr ( skb_mod );
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        printk("%u window_c %u, data_size %u\n", ntohl ( tcp_header->seq ), this_tcp_info->window_current, data_size);
         if( data_size > this_tcp_info->window_current)
         {
             kfree_skb(skb_mod);
@@ -700,10 +684,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
                  */
                 tcp_header->syn = 0;
                 tcp_header->seq = htonl(ntohl(tcp_header->seq) + 1);
-                //
-                ////kfree_skb(skb_mod);
-                ////goto send_skmod_finish;
-                //return 0;
             }
             /*
              * setup ack seql
@@ -720,7 +700,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             else if ( seq_rmhost_fake < seq_rmhost )
                 tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
         }
-        /**/
         this_tcp_info->window_current -= data_size;
         if(this_tcp_info->mirror_port)
             tcp_header->dest = htons(this_tcp_info->mirror_port);
@@ -728,14 +707,12 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
 
-        //skb_mod->csum = skb_checksum(skb_mod, ip_header->ihl*4, skb_mod->len-ip_header->ihl*4, 0);
         tcp_header->check = 0;
         tcp_header->check = tcp_v4_check(skb_mod->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_mod->csum);
 
         this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
-        printk("[%s] send %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
 
         send_skbmod ( bd->p, skb_mod );
 

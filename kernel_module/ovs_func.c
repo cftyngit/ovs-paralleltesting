@@ -55,7 +55,6 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 	case PT_ACTION_DROP:
 		pd_action_from_mirror(p, skb);
 		kfree_skb(skb);
-        //kfree(p);
 		return;
 		break;
 	case PT_ACTION_CLIENT_TO_SERVER:

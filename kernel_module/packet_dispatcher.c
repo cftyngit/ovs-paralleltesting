@@ -165,7 +165,7 @@ int pd_check_action ( struct sk_buff *skb )
     union my_ip_type ip_src, ip_dst;
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
-    //kthread_run(test_thread, NULL, "tcp_playbak_%d", 1);
+
     if ( ETH_P_IP != eth_type )
         return PT_ACTION_CONTINUE;
 
@@ -298,12 +298,12 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         //unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         //struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
         u32 this_tsval = get_tsval(skb);
-        
+
         if(TCP_STATE_LISTEN == this_tcp_info->state && !tcp_header->syn)
         {
             return 0;
         }
-        
+
         /*if(data_size)
         {
             memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
@@ -337,7 +337,6 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         else
             this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
         printk("setup window_c = %u\n", this_tcp_info->window_current);
-        
         if ( tcp_header->syn /*&& tcp_header->ack*/ )
         {
             this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
@@ -349,7 +348,6 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
                 this_tcp_info->seq_rmhost_fake = FAKE_SEQ;
             }
         }
-        
         /*
          * record lastest packet seq number
          */
@@ -361,11 +359,9 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             this_tcp_info->seq_current = ntohl(tcp_header->seq);
             this_tcp_info->seq_next = (ntohl(tcp_header->seq) + data_size);
         }
-        
         set_tcp_state ( NULL, skb );
 
         pd_respond_mirror ( ip, client_port, TCP_PROTO, CAUSE_BY_MIRROR );
-        printk("[%s]ntohl(tcp_header->seq): %u, ackseq_last_playback: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->ackseq_last_playback);
         if(TCP_STATE_ESTABLISHED == this_tcp_info->state && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
             ack_this_packet(skb);
     }

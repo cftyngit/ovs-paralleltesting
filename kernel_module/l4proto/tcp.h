@@ -24,8 +24,6 @@ int ack_this_packet(const struct sk_buff* skb);
 
 u32 seq_to_target(const u32 seq_mirror, const struct tcp_conn_info* tcp_info);
 u32 seq_to_mirror(const u32 seq_target, const struct tcp_conn_info* tcp_info);
-//u32 ackseq_to_target(const u32 ackseq_mirror, const struct tcp_conn_info* tcp_info);
-//u32 ackseq_to_mirror(const u32 ackseq_target, const struct tcp_conn_info* tcp_info);
 
 #define get_tsval(skb) \
     (__get_timestamp(skb, 0))
