@@ -204,7 +204,9 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     struct sk_buff* skb_mod = NULL;
     struct list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
+#ifdef DEBUG
     printk("into function: %s\n", __func__);
+#endif
     if ( IPPROTO_UDP == proto )
         packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
     else
@@ -327,8 +329,64 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
          */
         if(tcp_header->ack)
         {
+            u32 this_ack_seq = ntohl(tcp_header->ack_seq);
             u32 respond_window = (ntohs(tcp_header->window) << this_tcp_info->window_scale);
-            u32 send_size = abs(this_tcp_info->seq_last_send + this_tcp_info->last_send_size - ntohl(tcp_header->ack_seq));
+            u32 send_size = abs(this_tcp_info->seq_last_send + this_tcp_info->last_send_size - this_ack_seq);
+            /*
+             * process dup ACK and 3 dup ACK retransmission
+             */
+            if(this_ack_seq < this_tcp_info->seq_last_send + this_tcp_info->last_send_size)
+            {
+                printk("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
+                if(this_ack_seq != this_tcp_info->seq_dup_ack)
+                {
+                    this_tcp_info->seq_dup_ack = this_ack_seq;
+                    this_tcp_info->dup_ack_counter = 1;
+                }
+                else
+                {
+                    ++this_tcp_info->dup_ack_counter;
+                    if(this_tcp_info->dup_ack_counter >= 3)
+                    {//add re transmission func here
+                        struct list_head* playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+                        printk("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
+                        printk("[%s] playback_ptr: %p \n", __func__, playback_ptr);
+                        if(NULL != playback_ptr)
+                        {
+                            this_tcp_info->dup_ack_counter = 0;
+                            setup_playback_ptr(playback_ptr, this_tcp_info);
+                        }
+                    }
+                    //goto from_mirror_respond_mirror;
+                }
+            }
+            else if(this_ack_seq > this_tcp_info->seq_last_send + this_tcp_info->last_send_size)
+            {
+                struct list_head* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
+                struct list_head* pkt_ptr = this_tcp_info->playback_ptr;
+                struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege;
+                struct buf_data* bd_ptr = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr );
+                struct buf_data* bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
+                if(bd_edge && bd_ptr && bd_edge != bd_ptr)
+                {
+                    u32 seq_edge = 0;
+                    u32 seq_rmhost = this_tcp_info->seq_rmhost;
+                    u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+                    if ( seq_rmhost_fake > seq_rmhost )
+                        seq_edge = ntohl ( tcp_hdr(bd_edge->skb)->seq ) + ( seq_rmhost_fake - seq_rmhost );
+                    else if ( seq_rmhost_fake < seq_rmhost )
+                        seq_edge = ntohl ( tcp_hdr(bd_edge->skb)->seq ) - ( seq_rmhost - seq_rmhost_fake );
+                    if(this_ack_seq < seq_edge)
+                    {
+                        struct list_head* playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+                        if(NULL != playback_ptr)
+                        {
+                            this_tcp_info->dup_ack_counter = 0;
+                            setup_playback_ptr(playback_ptr, this_tcp_info);
+                        }
+                    }
+                }
+            }
             printk("[%s] rep_win: %u, send_size: %u\n", __func__, respond_window, send_size);
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
             this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
@@ -360,9 +418,9 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             this_tcp_info->seq_next = (ntohl(tcp_header->seq) + data_size);
         }
         set_tcp_state ( NULL, skb );
-
+//from_mirror_respond_mirror:
         pd_respond_mirror ( ip, client_port, TCP_PROTO, CAUSE_BY_MIRROR );
-        if(TCP_STATE_ESTABLISHED == this_tcp_info->state && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
+        if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
             ack_this_packet(skb);
     }
     return 0;
@@ -378,7 +436,9 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
     struct vport* this_vport = kmalloc(sizeof(struct vport), GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
     struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
+#ifdef DEBUG
     printk("into function: %s\n", __func__);
+#endif
     memcpy(this_vport, p, sizeof(struct vport));
     bd->p = this_vport;
     bd->skb = skb_mod;

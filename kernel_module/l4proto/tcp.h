@@ -21,6 +21,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause);
 int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror );
 void slide_send_window(struct tcp_conn_info* this_tcp_info);
 int ack_this_packet(const struct sk_buff* skb);
+struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info* this_tcp_info);
+void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this_tcp_info);
 
 u32 seq_to_target(const u32 seq_mirror, const struct tcp_conn_info* tcp_info);
 u32 seq_to_mirror(const u32 seq_target, const struct tcp_conn_info* tcp_info);

@@ -18,7 +18,7 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, struct list_head* head)
 
         prev = iterator;
     }
-    if(!prev || pbn->seq_num_next < list_entry(prev, struct pkt_buffer_node, list)->seq_num)
+    if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num)
         list_add(&pbn->list, iterator);
     else
         printk("[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, pbn->seq_num_next, list_entry(prev, struct pkt_buffer_node, list)->seq_num);

@@ -384,6 +384,11 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
                 }
                 break;
             case TCPOPT_SACK_PERM:
+                if (opsize == TCPOLEN_SACK_PERM)
+                {
+                    u16 cancle_sack = 0x01 + (0x01<<8);
+                    put_unaligned_be16(cancle_sack, (void*)ptr-2);
+                }
                 break;
             case TCPOPT_SACK:
                 break;
@@ -522,7 +527,7 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
 
             this_tcp_info->seq_fin = ntohl ( tcp_header->seq );
         }
-                break;
+        break;
     case TCP_STATE_FIN_WAIT1:
         if ( skb_mirror && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
             tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT2);
@@ -540,13 +545,12 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     case TCP_STATE_TIME_WAIT:
-        
         if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
         {
             tcp_state_reset(&conn_info_set, ip, port);
             state_reset = 1;
         }
-                break;
+        break;
     case TCP_STATE_CLOSE_WAIT1:
         if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
             tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT2);
@@ -583,12 +587,15 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 {
     struct sk_buff* skb_mod = NULL;
     struct buf_data* bd = NULL;
+    struct buf_data* bd_tmp = NULL;
     struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
     struct list_head* packet_buf = this_tcp_info == NULL ? NULL :  & ( this_tcp_info->buffers.packet_buffer );
     struct tcphdr* tcp_header;
     unsigned char should_break = 0;
     int state_reset = 0;
+#ifdef DEBUG
     printk("into function: %s\n", __func__);
+#endif
     if(NULL == this_tcp_info || NULL == packet_buf)
     {
         printk("[%s] get this_tcp_info fail\n", __func__);
@@ -604,10 +611,10 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         size_t data_size = 0;
         struct list_head* pkt_ptr_tmp = this_tcp_info->playback_ptr;
         struct iphdr* ip_header = NULL;
-        
+
         if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
             break;
-        
+
         bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
             break;
@@ -652,6 +659,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         tcp_header = tcp_hdr ( skb_mod );
         ip_header = ip_hdr ( skb_mod );
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
+        printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
         if( data_size > this_tcp_info->window_current)
         {
             kfree_skb(skb_mod);
@@ -661,7 +669,14 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
-        this_tcp_info->playback_ptr = pkt_ptr_tmp;
+        setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
+        /*
+         * setup send_window's right edge
+         */
+        pkt_ptr_tmp = this_tcp_info->send_wnd_right_dege;
+        bd_tmp = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
+        if(bd_tmp && ntohl(tcp_header->seq) >= ntohl(tcp_hdr(bd_tmp->skb)->seq))
+            this_tcp_info->send_wnd_right_dege = this_tcp_info->playback_ptr;
         /*
          * SYN packet doesn't need to chenge seq number
          */
@@ -718,6 +733,9 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if(!should_break)
             state_reset = set_tcp_state ( bd->skb, NULL );
+
+        if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+            break;
     }
     return 0;
 }
@@ -748,6 +766,7 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
                 break;
 
             printk("[%s] del pkt %p\n", __func__, iterator);
+            printk("[%s] del pkt %u\n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
             list_del(iterator);
             kfree(pbn->bd->p);
             kfree_skb(pbn->bd->skb);
@@ -777,4 +796,40 @@ u32 seq_to_mirror(const u32 seq_target, const struct tcp_conn_info* tcp_info)
         return seq_target + ( initseq_mirror - initseq_target );
     else
         return seq_target - ( initseq_target - initseq_mirror );
+}
+
+struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info* this_tcp_info)
+{
+    u32 real_target_seq;
+    const u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+    const u32 seq_rmhost = this_tcp_info->seq_rmhost;
+    struct pkt_buffer_node *pbn;
+    struct list_head* iterator = NULL;
+    struct list_head* head = &(this_tcp_info->buffers.packet_buffer);
+    struct list_head* ret = head;
+    if(list_empty(head))
+        return NULL;
+
+    if ( seq_rmhost_fake > seq_rmhost )
+        real_target_seq = seq_target - ( seq_rmhost_fake - seq_rmhost );
+    else
+        real_target_seq = seq_target + ( seq_rmhost - seq_rmhost_fake );
+
+    list_for_each(iterator, head)
+    {
+        pbn = list_entry(iterator, struct pkt_buffer_node, list);
+        printk("[%s] check seq: %u, target_seq: %u\n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
+        if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) <= real_target_seq )
+            return ret;
+
+        ret = iterator;
+    }
+    return NULL;
+}
+
+void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this_tcp_info)
+{
+    spin_lock(&(this_tcp_info->playback_ptr_lock));
+    this_tcp_info->playback_ptr = target_prt;
+    spin_unlock(&(this_tcp_info->playback_ptr_lock));
 }

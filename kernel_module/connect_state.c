@@ -26,6 +26,8 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
                 ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
+                ((struct tcp_conn_info*)get_proto_state)->send_wnd_right_dege = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
+                spin_lock_init(&((struct tcp_conn_info*)get_proto_state)->playback_ptr_lock);
                 radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             }
             break;
@@ -67,6 +69,8 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.mirror_buffer));
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.target_buffer));
             ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
+            ((struct tcp_conn_info*)get_proto_state)->send_wnd_right_dege = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
+            spin_lock_init(&((struct tcp_conn_info*)get_proto_state)->playback_ptr_lock);
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:

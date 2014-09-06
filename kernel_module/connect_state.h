@@ -2,6 +2,7 @@
 #define __CONNECT_STATE_H__
 
 #include <linux/list.h>
+#include <linux/spinlock.h>
 
 #include "common.h"
 #include "ovs_func.h"
@@ -25,6 +26,8 @@ struct tcp_conn_info
 {
     struct commom_buffers buffers;
     struct list_head* playback_ptr;
+    struct list_head* send_wnd_right_dege;
+    spinlock_t playback_ptr_lock;
     u32 seq_rmhost;
     u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
     u32 seq_server;
@@ -33,6 +36,7 @@ struct tcp_conn_info
     u32 seq_current;
     u32 seq_next;
     u32 seq_last_send;
+    u32 seq_dup_ack;
     u32 timestamp_last_from_target;
     u32 ackseq_last_from_target;
     u32 ackseq_last_playback;
@@ -43,6 +47,7 @@ struct tcp_conn_info
     u32 seq_last_ack;               //last ack from mirror
     u16 mirror_port;
     u8 window_scale;
+    u8 dup_ack_counter;
 };
 
 #define TCP_CONN_INFO_INIT \
