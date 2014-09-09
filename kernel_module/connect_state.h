@@ -44,6 +44,7 @@ struct tcp_conn_info
     u32 window_current;             //remain window size
     size_t last_send_size;          //used in calculate remain window size from mirror ACK
     u32 tsval_current;
+    u32 tsval_last_send;
     u32 seq_last_ack;               //last ack from mirror
     u16 mirror_port;
     u8 window_scale;

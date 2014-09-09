@@ -115,6 +115,7 @@ struct buf_data* pkt_buffer_peek_data_from_ptr(struct list_head* head, struct li
         && list_entry(this_ptr->next, struct pkt_buffer_node, list)->barrier == 0)
     {
         *ptr = this_ptr->next;
+        printk("[%s] return %p\n", __func__, this_ptr->next);
         return list_entry(this_ptr->next, struct pkt_buffer_node, list)->bd;
     }
     return NULL;

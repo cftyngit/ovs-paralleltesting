@@ -197,8 +197,6 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
     return 0;
 }
 
-#define CAUSE_BY_RMHOST 0
-#define CAUSE_BY_MIRROR 1
 int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char proto, u8 cause )
 {
     struct sk_buff* skb_mod = NULL;
@@ -332,65 +330,71 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             u32 this_ack_seq = ntohl(tcp_header->ack_seq);
             u32 respond_window = (ntohs(tcp_header->window) << this_tcp_info->window_scale);
             u32 send_size = abs(this_tcp_info->seq_last_send + this_tcp_info->last_send_size - this_ack_seq);
-            /*
-             * process dup ACK and 3 dup ACK retransmission
-             */
-            if(this_ack_seq < this_tcp_info->seq_last_send + this_tcp_info->last_send_size)
-            {
-                printk("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
-                if(this_ack_seq != this_tcp_info->seq_dup_ack)
-                {
-                    this_tcp_info->seq_dup_ack = this_ack_seq;
-                    this_tcp_info->dup_ack_counter = 1;
-                }
-                else
-                {
-                    ++this_tcp_info->dup_ack_counter;
-                    if(this_tcp_info->dup_ack_counter >= 3)
-                    {//add re transmission func here
-                        struct list_head* playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
-                        printk("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
-                        printk("[%s] playback_ptr: %p \n", __func__, playback_ptr);
-                        if(NULL != playback_ptr)
-                        {
-                            this_tcp_info->dup_ack_counter = 0;
-                            setup_playback_ptr(playback_ptr, this_tcp_info);
-                        }
-                    }
-                    //goto from_mirror_respond_mirror;
-                }
-            }
-            else if(this_ack_seq > this_tcp_info->seq_last_send + this_tcp_info->last_send_size)
-            {
-                struct list_head* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
-                struct list_head* pkt_ptr = this_tcp_info->playback_ptr;
-                struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege;
-                struct buf_data* bd_ptr = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr );
-                struct buf_data* bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
-                if(bd_edge && bd_ptr && bd_edge != bd_ptr)
-                {
-                    u32 seq_edge = 0;
-                    u32 seq_rmhost = this_tcp_info->seq_rmhost;
-                    u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
-                    if ( seq_rmhost_fake > seq_rmhost )
-                        seq_edge = ntohl ( tcp_hdr(bd_edge->skb)->seq ) + ( seq_rmhost_fake - seq_rmhost );
-                    else if ( seq_rmhost_fake < seq_rmhost )
-                        seq_edge = ntohl ( tcp_hdr(bd_edge->skb)->seq ) - ( seq_rmhost - seq_rmhost_fake );
-                    if(this_ack_seq < seq_edge)
-                    {
-                        struct list_head* playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
-                        if(NULL != playback_ptr)
-                        {
-                            this_tcp_info->dup_ack_counter = 0;
-                            setup_playback_ptr(playback_ptr, this_tcp_info);
-                        }
-                    }
-                }
-            }
+            
+            struct list_head* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
+            struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege->prev;
+            struct buf_data* bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
+
             printk("[%s] rep_win: %u, send_size: %u\n", __func__, respond_window, send_size);
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
             this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
             slide_send_window(this_tcp_info);
+            printk("[%s] bd_edge: %p\n", __func__, bd_edge);
+            if(TCP_STATE_ESTABLISHED == this_tcp_info->state && bd_edge)
+            {
+                u32 seq_rmhost = this_tcp_info->seq_rmhost;
+                u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+                struct tcphdr* tcp_header_edge = tcp_hdr(bd_edge->skb);
+                struct iphdr* ip_header_edge = ip_hdr(bd_edge->skb);
+                size_t data_size_edge = ntohs ( ip_header_edge->tot_len ) - ( ( ip_header_edge->ihl ) <<2 ) - ( ( tcp_header_edge->doff ) <<2 );
+                u32 seq_edge = 0;
+                if ( seq_rmhost_fake > seq_rmhost )
+                    seq_edge = ntohl ( tcp_header_edge->seq ) + ( seq_rmhost_fake - seq_rmhost );
+                else
+                    seq_edge = ntohl ( tcp_header_edge->seq ) - ( seq_rmhost - seq_rmhost_fake );
+                /*
+                 * process dup ACK and 3 dup ACK retransmission
+                 */
+                printk("[%s] this_ack_seq: %u, seq_edge: %u, data_size_edge:%u\n", __func__, this_ack_seq, seq_edge, data_size_edge);
+                if(this_ack_seq < seq_edge + data_size_edge)
+                {
+                    struct list_head* playback_ptr = NULL;
+                    printk("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
+                    if(this_ack_seq != this_tcp_info->seq_dup_ack)
+                    {
+                        this_tcp_info->seq_dup_ack = this_ack_seq;
+                        this_tcp_info->dup_ack_counter = 1;
+                    }
+                    else
+                    {
+                        ++this_tcp_info->dup_ack_counter;
+                        if(this_tcp_info->dup_ack_counter >= 3)
+                        {//add re transmission func here
+                            playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+                            this_tcp_info->window_current = respond_window;
+                            setup_playback_ptr(playback_ptr, this_tcp_info);
+                            printk("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
+                            goto retransmission;
+                        }
+                    }
+                    if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+                    {
+                        playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+                        this_tcp_info->window_current = respond_window;
+                        setup_playback_ptr(playback_ptr, this_tcp_info);
+                        goto retransmission;
+                    }
+retransmission:
+                    if(NULL != playback_ptr)
+                    {
+                        printk("[%s] playback_ptr: %p \n", __func__, playback_ptr);
+                        pd_respond_mirror ( ip, client_port, TCP_PROTO, CAUSE_BY_MIRROR );
+                        return 0;
+                    }
+                }
+                else if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+                    setup_playback_ptr(this_tcp_info->send_wnd_right_dege, this_tcp_info);
+            }
         }
         else
             this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
@@ -481,8 +485,8 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
         pbn->bd = bd;
         pbn->barrier = 0;
         //add_data ( packet_buf, bd );
-        //printk("[%s] tcp_header->seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->seq_last_ack);
-        //printk("[%s] tcp_header->ack_seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info));
+        printk("[%s] tcp_header->seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->seq_last_ack);
+        printk("[%s] tcp_header->ack_seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info));
         if(ntohl(tcp_header->seq) >= this_tcp_info->seq_last_ack || ntohl(tcp_header->ack_seq) >= seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))
             pkt_buffer_insert ( pbn, packet_buf );
 

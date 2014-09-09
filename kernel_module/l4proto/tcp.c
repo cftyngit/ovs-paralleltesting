@@ -380,6 +380,10 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
             case TCPOPT_TIMESTAMP:
                 if(opsize == TCPOLEN_TIMESTAMP)
                 {
+                    u32 pkt_tsval = get_unaligned_be32(ptr + 0);
+                    if(tcp_info->tsval_last_send > pkt_tsval)
+                        put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+4);
+
                     put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
                 }
                 break;
@@ -601,6 +605,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         printk("[%s] get this_tcp_info fail\n", __func__);
         return -1;
     }
+    if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
+        return 0;
 
     while ( !should_break && 0 == state_reset )
     {
@@ -614,7 +620,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
             break;
-
+        printk("[%s] pkt_ptr: %p, wind_r_edge: %p\n", __func__, pkt_ptr_tmp, this_tcp_info->send_wnd_right_dege);
         bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
             break;
@@ -675,6 +681,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          */
         pkt_ptr_tmp = this_tcp_info->send_wnd_right_dege;
         bd_tmp = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
+        //printk("[%s] bd_tmp: %p, tcp_header->seq: %u\n", __func__, bd_tmp, ntohl(tcp_header->seq));
         if(bd_tmp && ntohl(tcp_header->seq) >= ntohl(tcp_hdr(bd_tmp->skb)->seq))
             this_tcp_info->send_wnd_right_dege = this_tcp_info->playback_ptr;
         /*
@@ -718,6 +725,9 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         this_tcp_info->window_current -= data_size;
         if(this_tcp_info->mirror_port)
             tcp_header->dest = htons(this_tcp_info->mirror_port);
+
+        if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
+            this_tcp_info->tsval_last_send = get_tsval(skb_mod);
 
         setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
@@ -765,8 +775,8 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
             if( iterator == this_tcp_info->playback_ptr )
                 break;
 
-            printk("[%s] del pkt %p\n", __func__, iterator);
-            printk("[%s] del pkt %u\n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
+            printk("[%s] del pkt %p %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
+            //printk("[%s] del pkt \n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
             list_del(iterator);
             kfree(pbn->bd->p);
             kfree_skb(pbn->bd->skb);
@@ -807,6 +817,9 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
     struct list_head* iterator = NULL;
     struct list_head* head = &(this_tcp_info->buffers.packet_buffer);
     struct list_head* ret = head;
+    struct iphdr* ip_header;
+    struct tcphdr* tcp_header;
+    size_t data_size;
     if(list_empty(head))
         return NULL;
 
@@ -818,8 +831,11 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
     list_for_each(iterator, head)
     {
         pbn = list_entry(iterator, struct pkt_buffer_node, list);
-        printk("[%s] check seq: %u, target_seq: %u\n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
-        if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) <= real_target_seq )
+        ip_header = ip_hdr(pbn->bd->skb);
+        tcp_header = tcp_hdr(pbn->bd->skb);
+        data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
+        printk("[%s] %p check seq: %u, target_seq: %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
+        if(ntohl(tcp_header->seq) <= real_target_seq && ntohl(tcp_header->seq) + data_size > real_target_seq)
             return ret;
 
         ret = iterator;
@@ -829,6 +845,8 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
 
 void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this_tcp_info)
 {
+    if(NULL == target_prt || LIST_POISON1 == target_prt || LIST_POISON2 == target_prt)
+        return;
     spin_lock(&(this_tcp_info->playback_ptr_lock));
     this_tcp_info->playback_ptr = target_prt;
     spin_unlock(&(this_tcp_info->playback_ptr_lock));
