@@ -4,7 +4,6 @@
 #include <net/netlink.h>
 #include <net/sock.h>
 #include <linux/skbuff.h>
-#include <linux/version.h>
 
 #include "common.h"
 #include "packet_dispatcher.h"

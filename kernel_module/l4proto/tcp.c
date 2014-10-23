@@ -148,7 +148,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
         sock_release(sock);
         return -1;
     }
-    printk("send packet by skb success.\n");
+///    printk("send packet by skb success.\n");
     sock_release(sock);
     return 0;
 }
@@ -242,7 +242,7 @@ int ack_this_packet(const struct sk_buff* skb)
         sock_release(sock);
         return -1;
     }
-    printk("send packet by skb success.\n");
+///    printk("send packet by skb success.\n");
     sock_release(sock);
     return 0;
 }
@@ -468,7 +468,7 @@ u8 get_window_scaling(const struct sk_buff* skb)
                 __u8 snd_wscale = *(__u8 *)ptr;
                 if (snd_wscale > 14) 
                 {
-                    net_info_ratelimited("%s: Illegal window scaling value %d >14 received\n",  __func__, snd_wscale);  
+                    net_info_ratelimited("%s: Illegal window scaling value %d >14 received\n",  __func__, snd_wscale);
                     snd_wscale = 14;  
                 }
                 return snd_wscale;
@@ -582,8 +582,8 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         break;
     }
     new_state = tcp_state_get(&conn_info_set, ip, port);
-    if(old_state != new_state )
-        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "rmhost" : "mirror", old_state, new_state );
+///    if(old_state != new_state )
+///        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "rmhost" : "mirror", old_state, new_state );
 
     return state_reset;
 }
@@ -595,7 +595,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
     struct list_head* packet_buf = this_tcp_info == NULL ? NULL :  & ( this_tcp_info->buffers.packet_buffer );
     struct tcphdr* tcp_header;
-    unsigned char should_break = 0;
+    unsigned char should_break = cause == CAUSE_BY_RETRAN ? 1 : 0;
     int state_reset = 0;
 #ifdef DEBUG
     printk("into function: %s\n", __func__);
@@ -608,7 +608,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
         return 0;
 
-    while ( !should_break && 0 == state_reset )
+    do
     {
         int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
         u32 seq_server = this_tcp_info->seq_server;
@@ -618,9 +618,9 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         struct list_head* pkt_ptr_tmp = this_tcp_info->playback_ptr;
         struct iphdr* ip_header = NULL;
 
-        if ( TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s )
+        if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
             break;
-        printk("[%s] pkt_ptr: %p, wind_r_edge: %p\n", __func__, pkt_ptr_tmp, this_tcp_info->send_wnd_right_dege);
+///        printk("[%s] pkt_ptr: %p, wind_r_edge: %p\n", __func__, pkt_ptr_tmp, this_tcp_info->send_wnd_right_dege);
         bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
             break;
@@ -665,7 +665,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         tcp_header = tcp_hdr ( skb_mod );
         ip_header = ip_hdr ( skb_mod );
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
+        //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
         if( data_size > this_tcp_info->window_current)
         {
             kfree_skb(skb_mod);
@@ -675,6 +675,24 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
+        /*if(data_size || tcp_header->syn || tcp_header->fin)
+        {
+            struct retransmit_info* info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
+            info->client_port = client_port;
+            info->ip = ip;
+            info->list = this_tcp_info->playback_ptr;
+            info->tcp_info = this_tcp_info;
+            //printk("[%s] retrans info: %p\n", __func__, info);
+            if(timer_pending(&(bd->timer)))
+            {
+                del_timer(&(bd->timer));
+            }
+            init_timer(&(bd->timer));
+            setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
+            //mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
+            printk("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
+            mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
+        }*/
         setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
         /*
          * setup send_window's right edge
@@ -722,19 +740,37 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             else if ( seq_rmhost_fake < seq_rmhost )
                 tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
         }
+///        printk("[%s] send_pkt: seq: %u, ack_seq: %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
         this_tcp_info->window_current -= data_size;
+        /*
         if(this_tcp_info->mirror_port)
             tcp_header->dest = htons(this_tcp_info->mirror_port);
-
+        */
         if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
             this_tcp_info->tsval_last_send = get_tsval(skb_mod);
 
         setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
 
-        tcp_header->check = 0;
-        tcp_header->check = tcp_v4_check(skb_mod->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_mod->csum);
-
+        if(this_tcp_info->mirror_port)
+        {
+            inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 1);
+            tcp_header->dest = htons(this_tcp_info->mirror_port);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
+		    ;
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0))
+		    skb_mod->rxhash = 0;
+#else
+			skb_mod->hash = 0;
+#endif
+        }
+		if(data_size < 1460)
+		{
+			tcp_header->check = 0;
+			skb_mod->csum = csum_partial((unsigned char *)tcp_header, ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), 0);
+			tcp_header->check = csum_tcpudp_magic(ip_header->saddr, ip_header->daddr,
+                                              ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), ip_header->protocol, skb_mod->csum);
+		}
         this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
@@ -746,7 +782,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
             break;
-    }
+    }while ( 0 == should_break && 0 == state_reset );
     return 0;
 }
 
@@ -775,9 +811,11 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
             if( iterator == this_tcp_info->playback_ptr )
                 break;
 
-            printk("[%s] del pkt %p %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
+///            printk("[%s] del pkt %p %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
             //printk("[%s] del pkt \n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
             list_del(iterator);
+            if(timer_pending(&(pbn->bd->timer)))
+                del_timer(&(pbn->bd->timer));
             kfree(pbn->bd->p);
             kfree_skb(pbn->bd->skb);
             kfree(pbn->bd);
@@ -834,7 +872,7 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
         ip_header = ip_hdr(pbn->bd->skb);
         tcp_header = tcp_hdr(pbn->bd->skb);
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        printk("[%s] %p check seq: %u, target_seq: %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
+///        printk("[%s] %p check seq: %u, target_seq: %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
         if(ntohl(tcp_header->seq) <= real_target_seq && ntohl(tcp_header->seq) + data_size > real_target_seq)
             return ret;
 
@@ -851,3 +889,39 @@ void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this
     this_tcp_info->playback_ptr = target_prt;
     spin_unlock(&(this_tcp_info->playback_ptr_lock));
 }
+
+int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, struct tcp_conn_info* this_tcp_info)
+{
+    if(NULL == ptr)
+        return -1;
+
+    setup_playback_ptr(ptr, this_tcp_info);
+    return 0;
+    return tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
+}
+
+void retransmit_by_timer(unsigned long ptr)
+{
+    struct retransmit_info* info = (void*)ptr;
+    //unsigned long tmp = ptr;
+    //this_retrans_info = tmp;
+    struct tcp_conn_info* this_tcp_info = info->tcp_info;
+    struct list_head* retrans_ptr_tmp = info->list;
+    struct list_head* retrans_ptr = info->list;
+    struct buf_data* bd;
+    union my_ip_type ip = info->ip;
+    u16 client_port = info->client_port;
+    //kfree(info);
+    //printk("[%s] ptr: %lu\n", __func__, 123);
+    printk("[%s] ptr: %lx\n", __func__, ptr);
+    //return;
+    bd = pkt_buffer_peek_data_from_ptr ( & ( this_tcp_info->buffers.packet_buffer ), &retrans_ptr_tmp );
+    if(NULL == bd)
+        return;
+
+    if(bd->retrans_times < 7)
+        bd->retrans_times++;
+
+    retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
+}
+

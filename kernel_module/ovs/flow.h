@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2013 Nicira, Inc.
+ * Copyright (c) 2007-2014 Nicira, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -31,16 +31,14 @@
 #include <linux/jiffies.h>
 #include <linux/time.h>
 #include <linux/flex_array.h>
-
 #include <net/inet_ecn.h>
-#include <net/ip_tunnels.h>
 
 struct sk_buff;
 
 /* Used to memset ovs_key_ipv4_tunnel padding. */
 #define OVS_TUNNEL_KEY_SIZE					\
-        (offsetof(struct ovs_key_ipv4_tunnel, ipv4_ttl) + 	\
-         FIELD_SIZEOF(struct ovs_key_ipv4_tunnel, ipv4_ttl))
+	(offsetof(struct ovs_key_ipv4_tunnel, ipv4_ttl) +	\
+	FIELD_SIZEOF(struct ovs_key_ipv4_tunnel, ipv4_ttl))
 
 struct ovs_key_ipv4_tunnel {
 	__be64 tun_id;
@@ -49,8 +47,8 @@ struct ovs_key_ipv4_tunnel {
 	__be16 tun_flags;
 	u8   ipv4_tos;
 	u8   ipv4_ttl;
-};
-
+} __packed __aligned(4); /* Minimize padding. */
+/*
 static inline void ovs_flow_tun_key_init(struct ovs_key_ipv4_tunnel *tun_key,
 					 const struct iphdr *iph, __be64 tun_id,
 					 __be16 tun_flags)
@@ -62,18 +60,17 @@ static inline void ovs_flow_tun_key_init(struct ovs_key_ipv4_tunnel *tun_key,
 	tun_key->ipv4_ttl = iph->ttl;
 	tun_key->tun_flags = tun_flags;
 
-	/* clear struct padding. */
 	memset((unsigned char *) tun_key + OVS_TUNNEL_KEY_SIZE, 0,
 	       sizeof(*tun_key) - OVS_TUNNEL_KEY_SIZE);
 }
-
+*/
 struct sw_flow_key {
 	struct ovs_key_ipv4_tunnel tun_key;  /* Encapsulating tunnel key. */
 	struct {
 		u32	priority;	/* Packet QoS priority. */
 		u32	skb_mark;	/* SKB mark. */
 		u16	in_port;	/* Input switch port (or DP_MAX_PORTS). */
-	} phy;
+	} __packed phy; /* Safe when right after 'tun_key'. */
 	struct {
 		u8     src[ETH_ALEN];	/* Ethernet source address. */
 		u8     dst[ETH_ALEN];	/* Ethernet destination address. */
@@ -86,23 +83,21 @@ struct sw_flow_key {
 		u8     ttl;		/* IP TTL/hop limit. */
 		u8     frag;		/* One of OVS_FRAG_TYPE_*. */
 	} ip;
+	struct {
+		__be16 src;		/* TCP/UDP/SCTP source port. */
+		__be16 dst;		/* TCP/UDP/SCTP destination port. */
+		__be16 flags;		/* TCP flags. */
+	} tp;
 	union {
 		struct {
 			struct {
 				__be32 src;	/* IP source address. */
 				__be32 dst;	/* IP destination address. */
 			} addr;
-			union {
-				struct {
-					__be16 src;		/* TCP/UDP/SCTP source port. */
-					__be16 dst;		/* TCP/UDP/SCTP destination port. */
-					__be16 flags;		/* TCP flags. */
-				} tp;
-				struct {
-					u8 sha[ETH_ALEN];	/* ARP source hardware address. */
-					u8 tha[ETH_ALEN];	/* ARP target hardware address. */
-				} arp;
-			};
+			struct {
+				u8 sha[ETH_ALEN];	/* ARP source hardware address. */
+				u8 tha[ETH_ALEN];	/* ARP target hardware address. */
+			} arp;
 		} ipv4;
 		struct {
 			struct {
@@ -110,11 +105,6 @@ struct sw_flow_key {
 				struct in6_addr dst;	/* IPv6 destination address. */
 			} addr;
 			__be32 label;			/* IPv6 flow label. */
-			struct {
-				__be16 src;		/* TCP/UDP/SCTP source port. */
-				__be16 dst;		/* TCP/UDP/SCTP destination port. */
-				__be16 flags;		/* TCP flags. */
-			} tp;
 			struct {
 				struct in6_addr target;	/* ND target address. */
 				u8 sll[ETH_ALEN];	/* ND source link layer address. */

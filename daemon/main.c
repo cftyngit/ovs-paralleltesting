@@ -14,11 +14,12 @@
 #include <errno.h>
 
 #include "network.h"
-#include "../kernel_module/common.h"
 
 #ifdef NDEBUG
 # define DEBUG_PRINT(fmt, ...)
-# define DAEMONIZE
+# ifndef DAEMONIZE
+#  define DAEMONIZE
+# endif
 #else
 # ifdef DAEMONIZE
 #  define DEBUG_PRINT(fmt, ...) syslog(LOG_DEBUG, fmt, ##__VA_ARGS__)
@@ -43,6 +44,18 @@
 
 #define HOST_SERVER 1
 #define HOST_MIRROR 2
+
+union my_ip_type
+{
+	unsigned char c[4];
+	unsigned int i;
+};
+
+struct host_info
+{
+	union my_ip_type ip;
+	unsigned char mac[6];
+};
 
 struct setup_message
 {

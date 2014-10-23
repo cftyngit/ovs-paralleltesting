@@ -17,7 +17,7 @@
 extern int (*ovs_flow_extract_hi)(struct sk_buff *, u16, struct sw_flow_key *);
 extern struct sw_flow* (*ovs_flow_tbl_lookup_stats_hi)(struct flow_table*, const struct sw_flow_key*, u32*);
 extern int (*ovs_dp_upcall_hi)(struct datapath*, struct sk_buff*, const struct dp_upcall_info*);
-extern void (*ovs_flow_stats_update_hi)(struct sw_flow*, struct sk_buff*);
+extern void (*ovs_flow_stats_update_hi)(struct sw_flow *, __be16 tcp_flags, struct sk_buff *);
 extern int (*ovs_execute_actions_hi)(struct datapath*, struct sk_buff*);
 
 void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb);

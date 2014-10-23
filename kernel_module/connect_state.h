@@ -34,7 +34,7 @@ struct tcp_conn_info
     u32 seq_mirror;
     u32 seq_fin;
     u32 seq_current;
-    u32 seq_next;
+    u32 seq_next;                   //next seq number that we need to ack
     u32 seq_last_send;
     u32 seq_dup_ack;
     u32 timestamp_last_from_target;

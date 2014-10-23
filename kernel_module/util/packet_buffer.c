@@ -100,6 +100,8 @@ int pkt_buffer_cleanup(struct list_head* head)
 
         list_del(iterator);
         pbn = list_entry(iterator, struct pkt_buffer_node, list);
+        if(timer_pending(&(pbn->bd->timer)))
+            del_timer(&(pbn->bd->timer));
         kfree(pbn->bd->p);
         kfree_skb(pbn->bd->skb);
         kfree(pbn->bd);
@@ -115,7 +117,7 @@ struct buf_data* pkt_buffer_peek_data_from_ptr(struct list_head* head, struct li
         && list_entry(this_ptr->next, struct pkt_buffer_node, list)->barrier == 0)
     {
         *ptr = this_ptr->next;
-        printk("[%s] return %p\n", __func__, this_ptr->next);
+///        printk("[%s] return %p\n", __func__, this_ptr->next);
         return list_entry(this_ptr->next, struct pkt_buffer_node, list)->bd;
     }
     return NULL;

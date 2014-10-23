@@ -7,6 +7,15 @@
 
 #include "../common.h"
 
+struct buf_data
+{
+    int retrans_times;
+    struct timer_list timer;
+    struct sk_buff* skb;
+    struct vport* p;
+    void* conn_info;
+};
+
 struct pkt_buffer_node
 {
     struct list_head list;

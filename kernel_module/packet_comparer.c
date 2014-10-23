@@ -2,7 +2,64 @@
 
 int simple_comparer(char* data1, char* data2, size_t length)
 {
-    return memcmp(data1, data2, length);
+	int result = memcmp(data1, data2, length);
+	if(result)
+	{
+		int i = 0;
+		size_t remain = length;
+		printk("different:\n");
+		for(i = 0; i < length; i+=16)
+		{
+			int j = 0;
+			int print_len = min((size_t)16, remain);
+			printk("%05u: ", i);
+			for(j = 0; j < print_len; ++j)
+			{
+				printk("%02X", (unsigned char)data1[i+j]);
+				if( (i+j) % 2 )
+					printk(" ");
+			}
+			if(remain < 16)
+			{
+				int need_space = 40 - ((remain << 1) + (remain >> 1));
+				int k = 0;
+				for (k = 0; k < need_space; ++k)
+					printk(" ");
+			}
+
+			printk("\t\t");
+			for(j = 0; j < print_len; ++j)
+			{
+				printk("%02X", (unsigned char)data2[i+j]);
+				if( (i+j) % 2 )
+					printk(" ");
+			}
+			printk("\n");
+			remain -= print_len;
+		}
+	}
+	else
+	{
+		int i = 0;
+		size_t remain = length;
+		printk("the same:\n");
+		for(i = 0; i < length; i+=16)
+		{
+			int j = 0;
+			int print_len = min((size_t)16, remain);
+			printk("%05u: ", i);
+			for(j = 0; j < print_len; ++j)
+			{
+				printk("%02X", (unsigned char)data1[i+j]);
+				if( (i+j) % 2 )
+					printk(" ");
+			}
+			printk("\n");
+			remain -= print_len;
+		}
+
+	}
+    return result;
 }
 
 void del_buffer_node(struct buffer_node* bn)
@@ -61,7 +118,7 @@ int do_compare(struct connection_info* con_info, struct list_head* buffer1, stru
             if ( should_break == 1 || compare_target2 != NULL )
                 break;
         }
-        printk("compare_target1: %p | compare_target2: %p\n", compare_target1, compare_target2);
+        //printk("compare_target1: %p | compare_target2: %p\n", compare_target1, compare_target2);
         if ( compare_target1 != NULL && compare_target2 != NULL )
         {
             size_t compare_size = 0;
@@ -78,7 +135,7 @@ int do_compare(struct connection_info* con_info, struct list_head* buffer1, stru
                 cmp_data2 = compare_target2->payload.data + (compare_target2->payload.length - compare_target2->payload.remain);
                 compare_size = compare_target2->payload.remain;
             }
-            if ( !compare ( cmp_data1, cmp_data2, compare_size ) )
+            /*if ( !compare ( cmp_data1, cmp_data2, compare_size ) )
             {
                 //printk ( KERN_INFO "compare result: the same >>>> %s <<<<\n", compare_target1->payload.data );
                 
@@ -86,9 +143,10 @@ int do_compare(struct connection_info* con_info, struct list_head* buffer1, stru
             else
             {
                 //printk ( KERN_INFO "compare result: different %s <===> %s\n", compare_target1->payload.data, compare_target2->payload.data );
-            }
-
-            compare_target1->payload.remain -= compare_size;
+            }*/
+			compare ( cmp_data1, cmp_data2, compare_size );
+            
+			compare_target1->payload.remain -= compare_size;
             compare_target2->payload.remain -= compare_size;
             if(compare_target1->payload.remain == 0)
             {

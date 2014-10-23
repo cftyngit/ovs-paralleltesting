@@ -4,7 +4,7 @@
 int (*ovs_flow_extract_hi)(struct sk_buff *, u16, struct sw_flow_key *);
 struct sw_flow* (*ovs_flow_tbl_lookup_stats_hi)(struct flow_table*, const struct sw_flow_key*, u32*);
 int (*ovs_dp_upcall_hi)(struct datapath*, struct sk_buff*, const struct dp_upcall_info*);
-void (*ovs_flow_stats_update_hi)(struct sw_flow*, struct sk_buff*);
+void (*ovs_flow_stats_update_hi)(struct sw_flow *, __be16 tcp_flags, struct sk_buff *);
 int (*ovs_execute_actions_hi)(struct datapath*, struct sk_buff*);
 
 int init_ovs_func()
@@ -41,7 +41,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 	u64 *stats_counter;
 	u32 n_mask_hit;
 	int error;
-
+    int is_mirror = 0;
 	stats = this_cpu_ptr(dp->stats_percpu);
 	error = (*ovs_flow_extract_hi)(skb, p->port_no, &key);
 	
@@ -56,6 +56,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 		pd_action_from_mirror(p, skb);
 		kfree_skb(skb);
 		return;
+		is_mirror = 1;
 		break;
 	case PT_ACTION_CLIENT_TO_SERVER:
 		pd_action_from_client(p, skb);
@@ -84,13 +85,14 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 	OVS_CB(skb)->flow = flow;
 	OVS_CB(skb)->pkt_key = &key;
 
-	(*ovs_flow_stats_update_hi)(OVS_CB(skb)->flow, skb);
-	(*ovs_execute_actions_hi)(dp, skb);
+	(*ovs_flow_stats_update_hi)(OVS_CB(skb)->flow, key.tp.flags, skb);
+	//if(!is_mirror)
+	    (*ovs_execute_actions_hi)(dp, skb);
 	stats_counter = &stats->n_hit;
 
 out:
-	u64_stats_update_begin(&stats->sync);
+	u64_stats_update_begin(&stats->syncp);
 	(*stats_counter)++;
 	stats->n_mask_hit += n_mask_hit;
-	u64_stats_update_end(&stats->sync);
+	u64_stats_update_end(&stats->syncp);
 }
