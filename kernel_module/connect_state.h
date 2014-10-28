@@ -4,7 +4,7 @@
 #include <linux/list.h>
 #include <linux/spinlock.h>
 
-#include "common.h"
+#include "kernel_common.h"
 #include "ovs_func.h"
 #include "tcp_state.h"
 #include "util/packet_buffer.h"

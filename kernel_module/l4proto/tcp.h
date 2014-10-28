@@ -4,7 +4,7 @@
 #include <linux/skbuff.h>
 #include <net/tcp.h>
 #include <linux/kthread.h>
-#include "../common.h"
+#include "../kernel_common.h"
 #include "../connect_state.h"
 #include "../util/packet_buffer.h"
 

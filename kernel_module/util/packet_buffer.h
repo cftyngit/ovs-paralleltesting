@@ -5,7 +5,7 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 
-#include "../common.h"
+#include "../kernel_common.h"
 
 struct buf_data
 {

@@ -6,6 +6,9 @@ struct sw_flow* (*ovs_flow_tbl_lookup_stats_hi)(struct flow_table*, const struct
 int (*ovs_dp_upcall_hi)(struct datapath*, struct sk_buff*, const struct dp_upcall_info*);
 void (*ovs_flow_stats_update_hi)(struct sw_flow *, __be16 tcp_flags, struct sk_buff *);
 int (*ovs_execute_actions_hi)(struct datapath*, struct sk_buff*);
+//struct vport* (*ovs_vport_rcu_hi)(const struct datapath *dp, int port_no);
+int (*ovs_vport_send_hi)(struct vport *, struct sk_buff *);
+struct vport* (*ovs_lookup_vport_hi)(const struct datapath *dp, u16 port_no);
 
 int init_ovs_func()
 {
@@ -29,6 +32,14 @@ int init_ovs_func()
 	if(ovs_execute_actions_hi == 0)
 		return -1;
 
+	ovs_lookup_vport_hi = (void*)kallsyms_lookup_name("ovs_lookup_vport");
+	if(*ovs_lookup_vport_hi == 0)
+		return -1;
+
+	ovs_vport_send_hi = (void*)kallsyms_lookup_name("ovs_vport_send");
+    if(ovs_vport_send_hi == 0)
+        return -1;
+
 	return 0;
 }
 
@@ -50,7 +61,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 		return;
 	}
 
-    switch(pd_check_action(skb))
+    switch(pd_check_action(p, skb))
 	{
 	case PT_ACTION_DROP:
 		pd_action_from_mirror(p, skb);

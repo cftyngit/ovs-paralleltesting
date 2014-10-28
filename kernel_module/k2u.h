@@ -5,8 +5,7 @@
 #include <net/sock.h>
 #include <linux/skbuff.h>
 
-#include "common.h"
-#include "packet_dispatcher.h"
+#include "kernel_common.h"
 
 #define NLMSG_SETECHO 0x01
 #define NLMSG_GETECHO 0x02
@@ -24,4 +23,5 @@ struct setup_host
 int netlink_init(void);
 void netlink_release(void);
 
+int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);
 #endif

@@ -4,7 +4,7 @@
 #include <linux/slab.h>
 
 #include "util/compare_buffer.h"
-#include "common.h"
+#include "kernel_common.h"
 
 typedef int (*compare_func)(char*, char*, size_t);
 

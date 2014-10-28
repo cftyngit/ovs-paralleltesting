@@ -18,10 +18,8 @@
 #define PT_ACTION_DROP -1           /*mirror to client*/
 #define PT_ACTION_CLIENT_TO_SERVER 1
 #define PT_ACTION_SERVER_TO_CLIENT 2
-#define TCP_PROTO 0x06
-#define UDP_PROTO 0x11
 
-#include "common.h"
+#include "kernel_common.h"
 #include "connect_state.h"
 #include "l4proto/tcp.h"
 #include "util/compare_buffer.h"
@@ -36,8 +34,7 @@
 
 void init_packet_dispatcher(void);
 
-int pd_check_action(struct sk_buff *skb);
-int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);
+int pd_check_action(struct vport *p, struct sk_buff *skb);
 
 int pd_action_from_mirror(struct vport *p, struct sk_buff *skb);
 int pd_action_from_client(struct vport *p, struct sk_buff *skb);
