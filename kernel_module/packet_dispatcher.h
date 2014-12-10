@@ -11,6 +11,7 @@
 #include <linux/vmalloc.h>
 #include <linux/kernel.h>
 #include <linux/radix-tree.h>
+#include <uapi/linux/in.h>
 
 #include "ovs_func.h"
 

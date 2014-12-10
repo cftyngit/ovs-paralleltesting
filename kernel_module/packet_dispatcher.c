@@ -112,6 +112,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
     struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+   // mirror.port_no = p->port_no;
 ///    printk("into function: %s\n", __func__);
     if ( IPPROTO_UDP == ip_header->protocol )
     {
@@ -158,7 +159,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             return 0;
         }
 
-        if(data_size)
+        if(data_size || tcp_header->syn || tcp_header->fin)
         {
             //memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
 			//memmove ( data, (void *) skb->data + (tcp_header->doff*4 + ip_header->ihl*4 + sizeof(struct ethhdr)), data_size );
@@ -346,7 +347,7 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
         packet_buf = & ( this_tcp_info->buffers.packet_buffer );
         bd->conn_info = this_tcp_info;
         pbn->seq_num = ntohl(tcp_header->seq);
-        pbn->seq_num_next = pbn->seq_num + data_size;
+        pbn->seq_num_next = (pbn->seq_num + data_size) % U32_MAX;
         pbn->opt_key = get_tsval(skb_mod);
         pbn->bd = bd;
         pbn->barrier = 0;
@@ -412,7 +413,7 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
-        if(data_size)
+        if(data_size || tcp_header->syn || tcp_header->fin)
         {
 ///			printk("[%s] skb->len: %d, skb->data_len: %d\n", __func__, skb->len, skb->data_len);
             //memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
@@ -422,7 +423,7 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = bn->seq_num + data_size;
+            bn->seq_num_next = (bn->seq_num + data_size) % U32_MAX;
             bn->opt_key = get_tsval(skb);
             compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);

@@ -5,8 +5,8 @@
 //const union ip mirror = {{10, 0, 0, 3},};
 //static struct host_info server = {{{10, 0, 0, 2}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x02}};
 //static struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}};
-struct host_info server = {{{192, 168, 1, 1}}, {0xc0, 0xa0, 0xbb, 0xdc, 0xfa, 0x57}, 2};
-struct host_info mirror = {{{192, 168, 1, 1}}, {0xc8, 0xd3, 0xa3, 0x98, 0x65, 0xdf}, 1};
+struct host_info server = {{{10, 0, 0, 2}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, 0};
+struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}, 0};
 
 static int do_output(struct datapath *dp, struct sk_buff *skb, int out_port)
 {
@@ -79,62 +79,83 @@ void print_skb ( struct sk_buff *skb )
 
 void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
 {
-    int error;
-    struct sw_flow *flow;
     struct datapath *dp = p->dp;
-    struct sw_flow_key key;
-    u32 n_mask_hit;
+    struct sw_flow *flow;
     struct dp_stats_percpu *stats;
+    struct sw_flow_key key;
     u64 *stats_counter;
+    u32 n_mask_hit;
+    int error;
 
-	if(mirror.port_no)
+	/*if(mirror.port_no)
 	{
 		do_output(dp, skb_mod, mirror.port_no);
 		return;
-	}
-    /*
-     * copy from ovs_dp_process_received_packet
-     */
-    stats = this_cpu_ptr ( dp->stats_percpu );
-    error = ovs_flow_extract ( skb_mod, p->port_no, &key );
-    if ( unlikely ( error ) )
-    {
-        kfree_skb ( skb_mod );
+	}*/
+    stats = this_cpu_ptr(dp->stats_percpu);
+
+    /* Extract flow from 'skb' into 'key'. */
+    error = ovs_flow_extract(skb_mod, p->port_no, &key);
+    if (unlikely(error)) {
+        kfree_skb(skb_mod);
         return;
     }
-    flow = ovs_flow_tbl_lookup_stats ( &dp->table, &key, &n_mask_hit );
-    if ( unlikely ( !flow ) )
-    {
+    
+    /* Look up flow. */
+    flow = ovs_flow_tbl_lookup_stats(&dp->table, &key, &n_mask_hit);
+    if (unlikely(!flow)) {
         struct dp_upcall_info upcall;
+
         upcall.cmd = OVS_PACKET_CMD_MISS;
         upcall.key = &key;
         upcall.userdata = NULL;
-        upcall.portid = p->upcall_portid;
-        ovs_dp_upcall ( dp, skb_mod, &upcall );
-        consume_skb ( skb_mod );
-        stats_counter = &stats->n_missed;
-        goto mod_out;
-    }
-    OVS_CB ( skb_mod )->flow = flow;
-    OVS_CB ( skb_mod )->pkt_key = &key;
 
-    ovs_flow_stats_update ( OVS_CB ( skb_mod )->flow, key.tp.flags, skb_mod );
-    ovs_execute_actions ( dp, skb_mod );
+        upcall.portid = ovs_vport_find_upcall_portid(p, skb_mod);
+        printk("[%s] upcall port: %u\n", __func__, upcall.portid);
+        //return;
+        error = ovs_dp_upcall(dp, skb_mod, &upcall);
+        //return;
+        if (unlikely(error))
+            kfree_skb(skb_mod);
+        else
+            consume_skb(skb_mod);
+        stats_counter = &stats->n_missed;
+        goto out;
+    }
+    //printk("[%s] %p\n", __func__, skb_mod);
+    //printk("[%s] %p\n", __func__, OVS_CB(skb_mod));
+    //return;
+    OVS_CB(skb_mod)->flow = flow;
+    
+    OVS_CB(skb_mod)->pkt_key = &key;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
+    ovs_flow_stats_update(OVS_CB(skb_mod)->flow, key.tp.flags, skb_mod);
+#else
+    ovs_flow_stats_update(OVS_CB(skb_mod)->flow, skb_mod);
+#endif
+    ovs_execute_actions(dp, skb_mod);
     stats_counter = &stats->n_hit;
 
-mod_out:
-    u64_stats_update_begin ( &stats->syncp );
-    ( *stats_counter ) ++;
+out:
+    /* Update datapath statistics. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+    u64_stats_update_begin(&stats->syncp);
+    (*stats_counter)++;
     stats->n_mask_hit += n_mask_hit;
-    u64_stats_update_end ( &stats->syncp );
-
-
-    return;
+    u64_stats_update_end(&stats->syncp);
+#else
+    u64_stats_update_begin(&stats->sync);
+    (*stats_counter)++;
+    stats->n_mask_hit += n_mask_hit;
+    u64_stats_update_end(&stats->sync);
+#endif
 }
 
 int pd_modify_ip_mac ( struct sk_buff* skb_mod )
 {
-    //struct ethhdr* mac_header = eth_hdr ( skb_mod );
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0)
+    struct ethhdr* mac_header = eth_hdr ( skb_mod );
+#endif
     struct iphdr* ip_header = ip_hdr ( skb_mod );
     int transport_len = skb_mod->len - skb_transport_offset(skb_mod);
     __be32 *addr = &(ip_header->daddr);

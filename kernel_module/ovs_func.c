@@ -4,11 +4,16 @@
 int (*ovs_flow_extract_hi)(struct sk_buff *, u16, struct sw_flow_key *);
 struct sw_flow* (*ovs_flow_tbl_lookup_stats_hi)(struct flow_table*, const struct sw_flow_key*, u32*);
 int (*ovs_dp_upcall_hi)(struct datapath*, struct sk_buff*, const struct dp_upcall_info*);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
 void (*ovs_flow_stats_update_hi)(struct sw_flow *, __be16 tcp_flags, struct sk_buff *);
+#else
+void (*ovs_flow_stats_update_hi)(struct sw_flow*, struct sk_buff*);
+#endif
 int (*ovs_execute_actions_hi)(struct datapath*, struct sk_buff*);
 //struct vport* (*ovs_vport_rcu_hi)(const struct datapath *dp, int port_no);
 int (*ovs_vport_send_hi)(struct vport *, struct sk_buff *);
-struct vport* (*ovs_lookup_vport_hi)(const struct datapath *dp, u16 port_no);
+struct vport* (*ovs_lookup_vport_hi)(const struct datapath *, u16);
+u32 (*ovs_vport_find_upcall_portid_hi)(const struct vport *, struct sk_buff *);
 
 int init_ovs_func()
 {
@@ -39,35 +44,38 @@ int init_ovs_func()
 	ovs_vport_send_hi = (void*)kallsyms_lookup_name("ovs_vport_send");
     if(ovs_vport_send_hi == 0)
         return -1;
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,17,0)
+    ovs_vport_find_upcall_portid_hi = (void*)kallsyms_lookup_name("ovs_vport_find_upcall_portid");
+    if(ovs_vport_find_upcall_portid_hi == 0)
+        return -1;
+#endif
 	return 0;
 }
 
 void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 {
-	struct datapath *dp = p->dp;
-	struct sw_flow *flow;
-	struct dp_stats_percpu *stats;
-	struct sw_flow_key key;
-	u64 *stats_counter;
-	u32 n_mask_hit;
-	int error;
-    int is_mirror = 0;
-	stats = this_cpu_ptr(dp->stats_percpu);
-	error = (*ovs_flow_extract_hi)(skb, p->port_no, &key);
-	
-	if (unlikely(error)) {
-		kfree_skb(skb);
-		return;
-	}
+    struct datapath *dp = p->dp;
+    struct sw_flow *flow;
+    struct dp_stats_percpu *stats;
+    struct sw_flow_key key;
+    u64 *stats_counter;
+    u32 n_mask_hit;
+    int error;
 
+    stats = this_cpu_ptr(dp->stats_percpu);
+
+    /* Extract flow from 'skb' into 'key'. */
+    error = ovs_flow_extract(skb, p->port_no, &key);
+    if (unlikely(error)) {
+        kfree_skb(skb);
+        return;
+    }
     switch(pd_check_action(p, skb))
 	{
 	case PT_ACTION_DROP:
 		pd_action_from_mirror(p, skb);
 		kfree_skb(skb);
 		return;
-		is_mirror = 1;
 		break;
 	case PT_ACTION_CLIENT_TO_SERVER:
 		pd_action_from_client(p, skb);
@@ -76,34 +84,49 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
 		pd_action_from_server(p, skb);
 		break;
 	case PT_ACTION_CONTINUE:
+        //printk("PT_ACTION_CONTINUE\n");
 		break;
 	}
+    /* Look up flow. */
+    flow = ovs_flow_tbl_lookup_stats(&dp->table, &key, &n_mask_hit);
+    if (unlikely(!flow)) {
+        struct dp_upcall_info upcall;
 
-	flow = (*ovs_flow_tbl_lookup_stats_hi)(&dp->table, &key, &n_mask_hit);
-	if (unlikely(!flow)) {
-		struct dp_upcall_info upcall;
+        upcall.cmd = OVS_PACKET_CMD_MISS;
+        upcall.key = &key;
+        upcall.userdata = NULL;
+        upcall.portid = ovs_vport_find_upcall_portid(p, skb);
+        printk("[%s] upcall port: %u\n", __func__, upcall.portid);
+        error = ovs_dp_upcall(dp, skb, &upcall);
+        if (unlikely(error))
+            kfree_skb(skb);
+        else
+            consume_skb(skb);
+        stats_counter = &stats->n_missed;
+        goto out;
+    }
 
-		upcall.cmd = OVS_PACKET_CMD_MISS;
-		upcall.key = &key;
-		upcall.userdata = NULL;
-		upcall.portid = p->upcall_portid;
-		(*ovs_dp_upcall_hi)(dp, skb, &upcall);
-		consume_skb(skb);
-		stats_counter = &stats->n_missed;
-		goto out;
-	}
-
-	OVS_CB(skb)->flow = flow;
-	OVS_CB(skb)->pkt_key = &key;
-
-	(*ovs_flow_stats_update_hi)(OVS_CB(skb)->flow, key.tp.flags, skb);
-	//if(!is_mirror)
-	    (*ovs_execute_actions_hi)(dp, skb);
-	stats_counter = &stats->n_hit;
+    OVS_CB(skb)->flow = flow;
+    OVS_CB(skb)->pkt_key = &key;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
+    ovs_flow_stats_update(OVS_CB(skb)->flow, key.tp.flags, skb);
+#else
+    ovs_flow_stats_update(OVS_CB(skb)->flow, skb);
+#endif
+    ovs_execute_actions(dp, skb);
+    stats_counter = &stats->n_hit;
 
 out:
-	u64_stats_update_begin(&stats->syncp);
-	(*stats_counter)++;
-	stats->n_mask_hit += n_mask_hit;
-	u64_stats_update_end(&stats->syncp);
+    /* Update datapath statistics. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+    u64_stats_update_begin(&stats->syncp);
+    (*stats_counter)++;
+    stats->n_mask_hit += n_mask_hit;
+    u64_stats_update_end(&stats->syncp);
+#else
+    u64_stats_update_begin(&stats->sync);
+    (*stats_counter)++;
+    stats->n_mask_hit += n_mask_hit;
+    u64_stats_update_end(&stats->sync);
+#endif
 }

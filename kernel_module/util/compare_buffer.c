@@ -1,7 +1,8 @@
 #include "compare_buffer.h"
 
-int compare_buffer_insert(struct buffer_node* bn, struct list_head* head)
+int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 {
+    struct list_head* head = buffer->buffer_head;
     struct list_head *iterator;
     //u32 last_seq_next = head->prev ? list_entry(head->prev, struct buffer_node, list)->seq_num_next : 0;
 	struct list_head* prev = NULL;
@@ -12,7 +13,8 @@ int compare_buffer_insert(struct buffer_node* bn, struct list_head* head)
     }
 	list_for_each_prev(iterator, head)
 	{
-		if(list_entry(iterator, struct buffer_node, list)->seq_num_next <= bn->seq_num)
+        struct buffer_node* this_node = list_entry(iterator, struct buffer_node, list);
+		if(this_node->seq_num_next <= bn->seq_num || this_node->opt_key < bn->opt_key)
 			break;
 
 		prev = iterator;

@@ -8,6 +8,7 @@
 #include "ovs_func.h"
 #include "tcp_state.h"
 #include "util/packet_buffer.h"
+#include "util/compare_buffer.h"
 
 struct buf_packet
 {
@@ -18,8 +19,8 @@ struct buf_packet
 struct commom_buffers
 {
     struct list_head packet_buffer;
-    struct list_head target_buffer;
-    struct list_head mirror_buffer;
+    struct compare_buffer target_buffer;
+    struct compare_buffer mirror_buffer;
 };
 
 struct tcp_conn_info

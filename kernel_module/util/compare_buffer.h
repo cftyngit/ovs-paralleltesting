@@ -20,7 +20,13 @@ struct buffer_node
     struct data_node payload;
 };
 
-int compare_buffer_insert(struct buffer_node* bn, struct list_head* head);
+struct compare_buffer
+{
+    struct list_head* buffer_head;
+    struct buffer_node* compare_head;
+};
+
+int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer);
 
 #define compare_buffer_remove(bn) \
     list_del(bn->list)

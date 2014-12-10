@@ -1,4 +1,28 @@
 #include "connect_state.h"
+static inline void init_buffers(struct commom_buffers* bufs)
+{
+    INIT_LIST_HEAD(&(bufs->packet_buffer));
+    INIT_LIST_HEAD(&(bufs->mirror_buffer.buffer_head));
+    INIT_LIST_HEAD(&(bufs->target_buffer.buffer_head));
+    bufs->mirror_buffer.compare_head = NULL;
+    bufs->target_buffer.compare_head = NULL;
+}
+
+static inline void init_tcp_info(struct tcp_conn_info* tcp_info)
+{
+    memset(tcp_info, 0, sizeof(struct tcp_conn_info));
+    tcp_info->state = TCP_STATE_LISTEN;
+    init_buffers(&(tcp_info->buffers));
+    tcp_info->playback_ptr = &(tcp_info->buffers.packet_buffer);
+    tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer);
+    spin_lock_init(&(tcp_info->playback_ptr_lock));
+}
+
+static inline void init_udp_info(struct udp_conn_info* udp_info)
+{
+    memset(udp_info, 0, sizeof(struct udp_conn_info));
+    init_buffers(&(udp_info->buffers));
+}
 
 void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 proto, u16 port)
 {
@@ -19,7 +43,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
                 if(NULL == get_proto_state)
                     break;
-
+                /*
                 memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
                 ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
                 INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
@@ -28,6 +52,8 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
                 ((struct tcp_conn_info*)get_proto_state)->send_wnd_right_dege = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
                 spin_lock_init(&((struct tcp_conn_info*)get_proto_state)->playback_ptr_lock);
+                */
+                init_tcp_info(get_proto_state);
                 radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             }
             break;
@@ -38,11 +64,13 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
                 get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
                 if(NULL == get_proto_state)
                     break;
-
+                /*
                 memset(get_proto_state, 0, sizeof(struct udp_conn_info));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
                 INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
+                */
+                init_udp_info(get_proto_state);
                 radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
             }
             break;
@@ -62,7 +90,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
             if(NULL == get_proto_state)
                 break;
-
+            /*
             memset(get_proto_state, 0, sizeof(struct tcp_conn_info));
             ((struct tcp_conn_info*)get_proto_state)->state = TCP_STATE_LISTEN;
             INIT_LIST_HEAD(&(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer));
@@ -71,17 +99,21 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             ((struct tcp_conn_info*)get_proto_state)->playback_ptr = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
             ((struct tcp_conn_info*)get_proto_state)->send_wnd_right_dege = &(((struct tcp_conn_info*)get_proto_state)->buffers.packet_buffer);
             spin_lock_init(&((struct tcp_conn_info*)get_proto_state)->playback_ptr_lock);
+            */
+            init_tcp_info(get_proto_state);
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:
             get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
             if(NULL == get_proto_state)
                 break;
-
+            /*
             memset(get_proto_state, 0, sizeof(struct udp_conn_info));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.packet_buffer));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.mirror_buffer));
             INIT_LIST_HEAD(&(((struct udp_conn_info*)get_proto_state)->buffers.target_buffer));
+            */
+            init_udp_info(get_proto_state);
             radix_tree_insert(&(get_conn_info->udp_info_set), port, get_proto_state);
             break;
         }
