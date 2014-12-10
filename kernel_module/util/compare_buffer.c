@@ -2,7 +2,7 @@
 
 int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 {
-    struct list_head* head = buffer->buffer_head;
+    struct list_head* head = &(buffer->buffer_head);
     struct list_head *iterator;
     //u32 last_seq_next = head->prev ? list_entry(head->prev, struct buffer_node, list)->seq_num_next : 0;
 	struct list_head* prev = NULL;

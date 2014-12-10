@@ -22,7 +22,7 @@ struct buffer_node
 
 struct compare_buffer
 {
-    struct list_head* buffer_head;
+    struct list_head buffer_head;
     struct buffer_node* compare_head;
 };
 
