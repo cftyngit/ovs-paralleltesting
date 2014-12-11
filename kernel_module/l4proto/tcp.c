@@ -675,6 +675,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
+        /*
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
             struct retransmit_info* info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
@@ -693,6 +694,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             printk("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
             mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
         }
+        */
         setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
         /*
          * setup send_window's right edge

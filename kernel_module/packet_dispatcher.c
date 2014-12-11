@@ -168,7 +168,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = bn->seq_num + data_size;
+            bn->seq_num_next = (bn->seq_num + data_size + (tcp_header->syn || tcp_header->fin)) % U32_MAX;
             bn->opt_key = get_tsval(skb);
             compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
@@ -423,7 +423,7 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = (bn->seq_num + data_size) % U32_MAX;
+            bn->seq_num_next = (bn->seq_num + data_size + (tcp_header->syn || tcp_header->fin)) % U32_MAX;
             bn->opt_key = get_tsval(skb);
             compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);

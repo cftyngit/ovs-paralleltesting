@@ -72,7 +72,7 @@ void del_buffer_node(struct buffer_node* bn)
 int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
     struct list_head *buf_head1 = &(buffer1->buffer_head), *buf_head2 = &(buffer2->buffer_head);
-    int should_break = 0;
+    int should_break = 10;
     if(list_empty(buf_head1) || list_empty(buf_head2))
         return -1;
 
@@ -84,8 +84,8 @@ int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1,
 
     if(NULL == buffer2->compare_head)
         buffer2->compare_head = list_entry(buf_head2->next, struct buffer_node, list);
-
-    while(!should_break)
+    
+    while(should_break--)
     {
         struct buffer_node* compare_target1 = NULL;
         struct buffer_node* compare_target2 = NULL;
@@ -113,12 +113,11 @@ int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1,
             {
                 compare_target2 = next_item2;
                 del_buffer_node ( buffer2->compare_head );
-                buffer1->compare_head = next_item2;
+                buffer2->compare_head = next_item2;
             }
             else
                 break;
         }
-
         if ( compare_target1 != NULL && compare_target2 != NULL )
         {
             unsigned char* cmp_data1 = compare_target1->payload.data + (compare_target1->payload.length - compare_target1->payload.remain);
@@ -130,10 +129,11 @@ int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1,
                 compare_target1->payload.remain -= compare_size;
                 compare_target2->payload.remain -= compare_size;
             }
+            
             if(compare_target1->payload.remain == 0)
             {
                 struct buffer_node* next_item1 = buffer1->compare_head->list.next != buf_head1 ? list_entry(buffer1->compare_head->list.next, struct buffer_node, list) : NULL;
-                if(next_item1->payload.length == 0)
+                if(next_item1 && next_item1->payload.length == 0)
                 {
                     buffer1->compare_head = NULL;
                     del_buffer_node(next_item1);
@@ -143,13 +143,14 @@ int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1,
             if(compare_target2->payload.remain == 0)
             {
                 struct buffer_node* next_item2 = buffer2->compare_head->list.next != buf_head2 ? list_entry(buffer2->compare_head->list.next, struct buffer_node, list) : NULL;
-                if(next_item2->payload.length == 0)
+                if(next_item2 && next_item2->payload.length == 0)
                 {
                     buffer2->compare_head = NULL;
                     del_buffer_node(next_item2);
                     break;
                 }
             }
+            
         }
         else
             break;
