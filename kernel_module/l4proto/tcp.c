@@ -144,7 +144,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
     {
         dev_put(netdev);
         kfree_skb(skb_new);
-        printk("send packet by skb failed.\n");
+        PRINT_ERROR("send packet by skb failed.\n");
         sock_release(sock);
         return -1;
     }
@@ -238,7 +238,7 @@ int ack_this_packet(const struct sk_buff* skb)
     {
         dev_put(netdev);
         kfree_skb(skb_new);
-        printk("send packet by skb failed.\n");
+        PRINT_ERROR("send packet by skb failed.\n");
         sock_release(sock);
         return -1;
     }
@@ -597,12 +597,10 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     struct tcphdr* tcp_header;
     unsigned char should_break = cause == CAUSE_BY_RETRAN ? 1 : 0;
     int state_reset = 0;
-#ifdef DEBUG
-    printk("into function: %s\n", __func__);
-#endif
+    PRINT_DEBUG("into function: %s\n", __func__);
     if(NULL == this_tcp_info || NULL == packet_buf)
     {
-        printk("[%s] get this_tcp_info fail\n", __func__);
+        PRINT_ERROR("[%s] get this_tcp_info fail\n", __func__);
         return -1;
     }
     if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
@@ -916,7 +914,7 @@ void retransmit_by_timer(unsigned long ptr)
     u16 client_port = info->client_port;
     //kfree(info);
     //printk("[%s] ptr: %lu\n", __func__, 123);
-    printk("[%s] ptr: %lx\n", __func__, ptr);
+    PRINT_DEBUG("[%s] ptr: %lx\n", __func__, ptr);
     //return;
     bd = pkt_buffer_peek_data_from_ptr ( & ( this_tcp_info->buffers.packet_buffer ), &retrans_ptr_tmp );
     if(NULL == bd)

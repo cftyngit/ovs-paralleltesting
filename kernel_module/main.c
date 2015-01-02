@@ -24,7 +24,7 @@ static int __init lkm_init(void)
 
     if(target == 0)
     {
-		printk(KERN_INFO "can't find kernel function: %s\n", sym_name);
+		PRINT_ERROR("can't find kernel function: %s\n", sym_name);
 		return -1;
     }
 
@@ -32,13 +32,13 @@ static int __init lkm_init(void)
     if(0 > init_ovs_func())
         return -1;
 
-    printk(KERN_INFO "[%s] %s (0x%lx)\n", __this_module.name, sym_name, target);
+    PRINT_INFO("[%s] %s (0x%lx)\n", __this_module.name, sym_name, target);
     hijack_start((void*)target, &ovs_dp_process_received_packet_hi);
 
     if(!netlink_init())
-        printk(KERN_INFO "netlink init success\n");
+        PRINT_INFO("netlink init success\n");
     else
-        printk(KERN_INFO "netlink init fail\n");
+        PRINT_INFO("netlink init fail\n");
 
     return 0;
 }

@@ -20,8 +20,8 @@ static void udp_receive(struct sk_buff *skb)
     case NLMSG_GETECHO:
         payload = nlmsg_data(nlh);
         payload_len = nlmsg_len(nlh);
-        printk(KERN_INFO "payload_len = %d\n", payload_len);
-        printk(KERN_INFO "Recievid: %s, From: %d\n", (char *)payload, nlh->nlmsg_pid);
+        PRINT_INFO("payload_len = %d\n", payload_len);
+        PRINT_INFO("Recievid: %s, From: %d\n", (char *)payload, nlh->nlmsg_pid);
         out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
         if (!out_skb) goto failure;
             out_nlh = nlmsg_put(out_skb, 0, 0, NLMSG_SETECHO, payload_len, 0); //填充协议头数据
@@ -34,10 +34,10 @@ static void udp_receive(struct sk_buff *skb)
     case NLMSG_SETUP_MIRROR:
         payload = nlmsg_data(nlh);
         payload_len = nlmsg_len(nlh);
-        printk(KERN_INFO "payload_len = %d\n", payload_len);
-        printk(KERN_INFO "setup mirror IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
+        PRINT_INFO("payload_len = %d\n", payload_len);
+        PRINT_INFO("setup mirror IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
                ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
-        printk(KERN_INFO "setup mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+        PRINT_INFO("setup mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
                ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
                ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
 
@@ -46,21 +46,21 @@ static void udp_receive(struct sk_buff *skb)
     case NLMSG_SETUP_SERVER:
         payload = nlmsg_data(nlh);
         payload_len = nlmsg_len(nlh);
-        printk(KERN_INFO "payload_len = %d\n", payload_len);
-        printk(KERN_INFO "setup server IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
+        PRINT_INFO("payload_len = %d\n", payload_len);
+        PRINT_INFO("setup server IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
                ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
-        printk(KERN_INFO "setup server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+        PRINT_INFO("setup server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
                ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
                ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
 
         pd_setup_hosts(((struct host_info *)payload), NULL);
         break;
     default:
-        printk(KERN_INFO "Unknow msgtype recieved!\n");
+        PRINT_INFO("Unknow msgtype recieved!\n");
     }
     return;
 failure:
-    printk(KERN_INFO " failed in fun dataready!\n");
+    PRINT_INFO(" failed in fun dataready!\n");
 }
 
 int netlink_init(void)
@@ -93,7 +93,7 @@ void netlink_release(void)
 {
     if(netlink_sock)
         sock_release(netlink_sock->sk_socket);
-    printk("netlink driver remove successfully\n");
+    PRINT_INFO("netlink driver remove successfully\n");
 }
 
 int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
@@ -109,21 +109,21 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     /*while(udp_buffer.count > 0)
         del_queue(&(udp_buffer));*/
 
-    printk("old server ip = %d\n", server.ip.i);
-    printk("old mirror ip = %d\n", mirror.ip.i);
+    PRINT_INFO("old server ip = %d\n", server.ip.i);
+    PRINT_INFO("old mirror ip = %d\n", mirror.ip.i);
     if(set_server != NULL)
     {
         server.ip.i = set_server->ip.i;
         memcpy(server.mac, set_server->mac, 6);
-        printk("set server ip = %hhu.%hhu.%hhu.%hhu\n", server.ip.c[0], server.ip.c[1], server.ip.c[2], server.ip.c[3]);
-        printk("set server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", server.mac[0], server.mac[1], server.mac[2], server.mac[3], server.mac[4], server.mac[5]);
+        PRINT_INFO("set server ip = %hhu.%hhu.%hhu.%hhu\n", server.ip.c[0], server.ip.c[1], server.ip.c[2], server.ip.c[3]);
+        PRINT_INFO("set server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", server.mac[0], server.mac[1], server.mac[2], server.mac[3], server.mac[4], server.mac[5]);
     }
     if(set_mirror != NULL)
     {
         mirror.ip.i = set_mirror->ip.i;
         memcpy(mirror.mac, set_mirror->mac, 6);
-        printk("set mirror ip = %hhu.%hhu.%hhu.%hhu\n", mirror.ip.c[0], mirror.ip.c[1], mirror.ip.c[2], mirror.ip.c[3]);
-        printk("set mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", mirror.mac[0], mirror.mac[1], mirror.mac[2], mirror.mac[3], mirror.mac[4], mirror.mac[5]);
+        PRINT_INFO("set mirror ip = %hhu.%hhu.%hhu.%hhu\n", mirror.ip.c[0], mirror.ip.c[1], mirror.ip.c[2], mirror.ip.c[3]);
+        PRINT_INFO("set mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", mirror.mac[0], mirror.mac[1], mirror.mac[2], mirror.mac[3], mirror.mac[4], mirror.mac[5]);
     }
     return 0;
 }

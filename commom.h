@@ -5,37 +5,34 @@
 #include <stdint.h>
 #endif
 
+#ifndef __KERNEL__
+#define UINT8	uint8_t
+#define UINT16	uint16_t
+#define UINT32	uint32_t
+#else
+#define UINT8	u8
+#define UINT16	u16
+#define UINT32	u32
+#endif
+
 union my_ip_type
 {
 	unsigned char c[4];
-#ifndef __KERNEL__
-	uint32_t i;
-#else
-	u32 i;
-#endif
+	UINT32 i;
 };
 
 struct host_info
 {
 	union my_ip_type ip;
 	unsigned char mac[6];
-#ifndef __KERNEL__
-	uint16_t port_no;
-#else
-	u16 port_no;
-#endif
+	UINT16 port_no;
 };
 
 struct connection_info
 {
 	union my_ip_type ip;
-#ifndef __KERNEL__
-	uint16_t port;
-	uint8_t proto;
-#else
-	u16 port;
-	u8 proto;
-#endif
+	UINT16 port;
+	UINT8 proto;
 };
 
 #endif

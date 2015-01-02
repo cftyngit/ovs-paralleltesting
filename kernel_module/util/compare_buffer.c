@@ -22,7 +22,7 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 	if(!prev || bn->seq_num_next <= list_entry(prev, struct buffer_node, list)->seq_num)
 		list_add(&bn->list, iterator);
 	else
-		printk("[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, bn->seq_num_next, list_entry(prev, struct buffer_node, list)->seq_num);
+		printk(KERN_ERR "[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, bn->seq_num_next, list_entry(prev, struct buffer_node, list)->seq_num);
 
 	/*
     if(bn->seq_num > last_seq_next && bn->seq_num - last_seq_next > UINT_MAX >> 1)

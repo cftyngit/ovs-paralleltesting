@@ -30,15 +30,15 @@ void print_skb ( struct sk_buff *skb )
 	struct sk_buff* skb_mod = skb;
     struct ethhdr* mac_header = eth_hdr ( skb_mod );
     unsigned short eth_type = ntohs ( mac_header->h_proto );
-	printk ( KERN_INFO "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" );
-	printk ( KERN_INFO "MAC: %x:%x:%x:%x:%x:%x -> %x:%x:%x:%x:%x:%x\n", mac_header->h_source[0],mac_header->h_source[1],
+	PRINT_INFO ( "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" );
+	PRINT_INFO ( "MAC: %x:%x:%x:%x:%x:%x -> %x:%x:%x:%x:%x:%x\n", mac_header->h_source[0],mac_header->h_source[1],
 	mac_header->h_source[2],mac_header->h_source[3],
 	mac_header->h_source[4],mac_header->h_source[5],
 	mac_header->h_dest[0],mac_header->h_dest[1],
 	mac_header->h_dest[2],mac_header->h_dest[3],
 	mac_header->h_dest[4],mac_header->h_dest[5] );
 
-	printk ( KERN_INFO "EtherType: 0x%x\n", eth_type );
+	PRINT_INFO ( "EtherType: 0x%x\n", eth_type );
 
 	if ( 0x0800 == eth_type )
 	{// if layer 3 protocol is IPv4
@@ -47,7 +47,7 @@ void print_skb ( struct sk_buff *skb )
 		char* ip_src = ( unsigned char* ) & ( ip_header->saddr );
 		char* ip_dst = ( unsigned char* ) & ( ip_header->daddr );
 
-		printk ( KERN_INFO "IP: %d.%d.%d.%d -> %d.%d.%d.%d\n", 
+		PRINT_INFO ( "IP: %d.%d.%d.%d -> %d.%d.%d.%d\n", 
 			ip_src[0], ip_src[1], ip_src[2], ip_src[3],
 			ip_dst[0], ip_dst[1], ip_dst[2], ip_dst[3] );
 
@@ -57,23 +57,23 @@ void print_skb ( struct sk_buff *skb )
 		{//UDP
 			struct udphdr* udp_header = udp_hdr ( skb_mod );
 			size_t data_size = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
-			printk ( KERN_INFO "UDP datasize: %lu\n", data_size );
+			PRINT_INFO ( "UDP datasize: %zu\n", data_size );
 			break;
 		}
 		case 0x06:
 		{//TCP
 			struct tcphdr* tcp_header = tcp_hdr ( skb_mod );
 			size_t data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-			printk ( KERN_INFO "TCP flags: %d %d %d\n", tcp_header->syn, tcp_header->ack, tcp_header->fin );
-			printk ( KERN_INFO "seq number: %u, ACK number: %u", ntohl ( tcp_header->seq ), ntohl ( tcp_header->ack_seq ) );
-			printk ( KERN_INFO "TCP datasize: %hu - %hu = %lu\n", ntohs ( ip_header->tot_len ), ( tcp_header->doff ) <<2, data_size );
+			PRINT_INFO ( "TCP flags: %d %d %d\n", tcp_header->syn, tcp_header->ack, tcp_header->fin );
+			PRINT_INFO ( "seq number: %u, ACK number: %u", ntohl ( tcp_header->seq ), ntohl ( tcp_header->ack_seq ) );
+			PRINT_INFO ( "TCP datasize: %hu - %hu = %zu\n", ntohs ( ip_header->tot_len ), ( tcp_header->doff ) <<2, data_size );
 			break;
 		}
 		default:
 			break;
 		}
 	}
-	printk ( KERN_INFO "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" );
+	PRINT_INFO ( "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" );
 	return;
 }
 
@@ -111,7 +111,7 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
         upcall.userdata = NULL;
 
         upcall.portid = ovs_vport_find_upcall_portid(p, skb_mod);
-        printk("[%s] upcall port: %u\n", __func__, upcall.portid);
+        PRINT_DEBUG("[%s] upcall port: %u\n", __func__, upcall.portid);
         //return;
         error = ovs_dp_upcall(dp, skb_mod, &upcall);
         //return;

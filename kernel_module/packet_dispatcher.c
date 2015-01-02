@@ -56,9 +56,9 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     struct sk_buff* skb_mod = NULL;
     struct list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
-#ifdef DEBUG
-    printk("into function: %s\n", __func__);
-#endif
+
+    PRINT_DEBUG("into function: %s\n", __func__);
+
     if ( IPPROTO_UDP == proto )
         packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
     else
@@ -153,7 +153,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
         u32 this_tsval = get_tsval(skb);
-		printk("[%s] input port: %hu\n", __func__, p->port_no);
+		PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
         if(TCP_STATE_LISTEN == this_tcp_info->state && !tcp_header->syn)
         {
             return 0;
@@ -224,7 +224,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
                 if(this_ack_seq < seq_edge + data_size_edge)
                 {
                     struct list_head* playback_ptr = NULL;
-                    printk("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
+                    PRINT_DEBUG("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
                     if(this_ack_seq != this_tcp_info->seq_dup_ack)
                     {
                         this_tcp_info->seq_dup_ack = this_ack_seq;
@@ -238,7 +238,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
                             playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
                             this_tcp_info->window_current = respond_window;
                             setup_playback_ptr(playback_ptr, this_tcp_info);
-                            printk("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
+                            PRINT_DEBUG("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
                             goto retransmission;
                         }
                     }
@@ -305,15 +305,15 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
     struct vport* this_vport = kmalloc(sizeof(struct vport), GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
     struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
-#ifdef DEBUG
-    printk("into function: %s\n", __func__);
-#endif
+
+    PRINT_DEBUG("into function: %s\n", __func__);
+
     memcpy(this_vport, p, sizeof(struct vport));
     bd->p = this_vport;
     bd->skb = skb_mod;
     bd->retrans_times = 0;
     init_timer(&(bd->timer));
-	printk("[%s] input port: %hu\n", __func__, p->port_no);
+	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
     if ( IPPROTO_UDP == ip_header->protocol )
     {
         struct udphdr* udp_header = udp_hdr ( skb_mod );

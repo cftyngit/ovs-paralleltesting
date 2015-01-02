@@ -7,34 +7,34 @@ int simple_comparer(char* data1, char* data2, size_t length)
 	{
 		int i = 0;
 		size_t remain = length;
-		printk("different:\n");
+		PRINT_INFO("different:\n");
 		for(i = 0; i < length; i+=16)
 		{
 			int j = 0;
 			int print_len = min((size_t)16, remain);
-			printk("%05u: ", i);
+			PRINT_INFO("%05u: ", i);
 			for(j = 0; j < print_len; ++j)
 			{
-				printk("%02X", (unsigned char)data1[i+j]);
+				PRINT_INFO("%02X", (unsigned char)data1[i+j]);
 				if( (i+j) % 2 )
-					printk(" ");
+					PRINT_INFO(" ");
 			}
 			if(remain < 16)
 			{
 				int need_space = 40 - ((remain << 1) + (remain >> 1));
 				int k = 0;
 				for (k = 0; k < need_space; ++k)
-					printk(" ");
+					PRINT_INFO(" ");
 			}
 
-			printk("\t\t");
+			PRINT_INFO("\t\t");
 			for(j = 0; j < print_len; ++j)
 			{
-				printk("%02X", (unsigned char)data2[i+j]);
+				PRINT_INFO("%02X", (unsigned char)data2[i+j]);
 				if( (i+j) % 2 )
-					printk(" ");
+					PRINT_INFO(" ");
 			}
-			printk("\n");
+			PRINT_INFO("\n");
 			remain -= print_len;
 		}
 	}
@@ -42,19 +42,19 @@ int simple_comparer(char* data1, char* data2, size_t length)
 	{
 		int i = 0;
 		size_t remain = length;
-		printk("the same:\n");
+		PRINT_INFO("the same:\n");
 		for(i = 0; i < length; i+=16)
 		{
 			int j = 0;
 			int print_len = min((size_t)16, remain);
-			printk("%05u: ", i);
+			PRINT_INFO("%05u: ", i);
 			for(j = 0; j < print_len; ++j)
 			{
-				printk("%02X", (unsigned char)data1[i+j]);
+				PRINT_INFO("%02X", (unsigned char)data1[i+j]);
 				if( (i+j) % 2 )
-					printk(" ");
+					PRINT_INFO(" ");
 			}
-			printk("\n");
+			PRINT_INFO("\n");
 			remain -= print_len;
 		}
 
@@ -67,6 +67,17 @@ void del_buffer_node(struct buffer_node* bn)
     list_del(&bn->list);
     kfree(bn->payload.data);
     kfree(bn);
+}
+
+int debug_comparer(char* data1, char* data2, size_t length)
+{
+	int result = memcmp(data1, data2, length);
+	if(result)
+		printk("[%s] %p comapre with %p, size: %zu is different\n", __func__, data1, data2, length);
+	else
+		printk("[%s] %p comapre with %p, size: %zu is the same\n", __func__, data1, data2, length);
+
+	return result;
 }
 
 int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
