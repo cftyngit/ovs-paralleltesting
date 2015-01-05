@@ -3,7 +3,9 @@ static inline void init_buffers(struct commom_buffers* bufs)
 {
     INIT_LIST_HEAD(&(bufs->packet_buffer));
     INIT_LIST_HEAD(&(bufs->mirror_buffer.buffer_head));
+	spin_lock_init(&(bufs->mirror_buffer.compare_lock));
     INIT_LIST_HEAD(&(bufs->target_buffer.buffer_head));
+	spin_lock_init(&(bufs->target_buffer.compare_lock));
     bufs->mirror_buffer.compare_head = NULL;
     bufs->target_buffer.compare_head = NULL;
 }

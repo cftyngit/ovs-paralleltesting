@@ -3,6 +3,8 @@
 
 #include <linux/list.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/spinlock.h>
 
 struct data_node
 {
@@ -23,10 +25,14 @@ struct buffer_node
 struct compare_buffer
 {
     struct list_head buffer_head;
+	spinlock_t compare_lock;
     struct buffer_node* compare_head;
 };
 
 int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer);
+struct data_node* compare_buffer_getblock(struct compare_buffer* buffer);
+size_t compare_buffer_consume(size_t size, struct compare_buffer* buffer);
+void del_buffer_node(struct buffer_node* bn);
 
 #define compare_buffer_remove(bn) \
     list_del(bn->list)

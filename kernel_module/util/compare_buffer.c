@@ -54,3 +54,69 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 	*/
     return 0;
 }
+
+void del_buffer_node(struct buffer_node* bn)
+{
+    list_del(&bn->list);
+    kfree(bn->payload.data);
+    kfree(bn);
+}
+
+struct data_node* compare_buffer_getblock(struct compare_buffer* buffer)
+{
+	struct data_node* ret = NULL;
+	spin_lock(&(buffer->compare_lock));
+	if(NULL == buffer->compare_head)
+        buffer->compare_head = buffer->compare_head->list.next != &(buffer->buffer_head) ? list_entry(buffer->compare_head->list.next, struct buffer_node, list) : NULL;
+
+	if(buffer->compare_head && buffer->compare_head->payload.remain > 0)
+		ret = &(buffer->compare_head->payload);
+    else
+	{
+		struct buffer_node* next_item = buffer->compare_head->list.next != &(buffer->buffer_head) ? list_entry(buffer->compare_head->list.next, struct buffer_node, list) : NULL;
+		if(next_item && next_item->seq_num == buffer->compare_head->seq_num_next)
+		{
+			ret = &(next_item->payload);
+			del_buffer_node ( buffer->compare_head );
+			buffer->compare_head = next_item;
+		}
+	}
+	spin_unlock(&(buffer->compare_lock));
+	return ret;
+}
+
+size_t compare_buffer_consume(size_t size, struct compare_buffer* buffer)
+{
+	size_t ret = 0;
+	struct data_node* target = compare_buffer_getblock(buffer);
+	spin_lock(&(buffer->compare_lock));
+	if(NULL == target)
+		goto exit;
+
+	if(size > target->remain)
+	{
+		ret = target->remain;
+		target->remain = 0;
+	}
+	else
+	{
+		ret = size;
+		target->remain -= size;
+	}
+	/*
+	 * peek next item, if next item is "THE NEXT ONE" && is tail(payload.length == 0), free both node
+	 */
+	if(target->remain == 0)
+	{
+		struct buffer_node* next_item = buffer->compare_head->list.next != &(buffer->buffer_head) ? list_entry(buffer->compare_head->list.next, struct buffer_node, list) : NULL;
+		if(next_item && next_item->seq_num == buffer->compare_head->seq_num_next && next_item->payload.length == 0)
+		{
+			del_buffer_node(buffer->compare_head);
+			del_buffer_node(next_item);
+			buffer->compare_head = NULL;
+		}
+	}
+exit:
+	spin_unlock(&(buffer->compare_lock));
+	return ret;
+}
