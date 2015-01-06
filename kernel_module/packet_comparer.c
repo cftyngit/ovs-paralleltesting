@@ -77,13 +77,9 @@ int debug_comparer(char* data1, char* data2, size_t length)
 
 int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
-    struct list_head *buf_head1 = &(buffer1->buffer_head), *buf_head2 = &(buffer2->buffer_head);
     int should_break = INT_MAX;
-    if(list_empty(buf_head1) || list_empty(buf_head2))
-        return -1;
-
     if(compare == NULL)
-        compare = simple_comparer;
+        compare = debug_comparer;
     
     while(should_break--)
     {

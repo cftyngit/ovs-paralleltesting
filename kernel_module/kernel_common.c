@@ -87,11 +87,11 @@ void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
     u32 n_mask_hit;
     int error;
 
-	/*if(mirror.port_no)
+	if(mirror.port_no)
 	{
 		do_output(dp, skb_mod, mirror.port_no);
 		return;
-	}*/
+	}
     stats = this_cpu_ptr(dp->stats_percpu);
 
     /* Extract flow from 'skb' into 'key'. */
