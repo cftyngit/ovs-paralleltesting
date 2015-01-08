@@ -96,7 +96,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
         upcall.key = &key;
         upcall.userdata = NULL;
         upcall.portid = ovs_vport_find_upcall_portid(p, skb);
-        PRINT_DEBUG("[%s] upcall port: %u\n", __func__, upcall.portid);
+//        PRINT_DEBUG("[%s] upcall port: %u\n", __func__, upcall.portid);
         error = ovs_dp_upcall(dp, skb, &upcall);
         if (unlikely(error))
             kfree_skb(skb);

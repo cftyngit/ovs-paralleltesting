@@ -123,7 +123,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     struct list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
 
-    PRINT_DEBUG("into function: %s\n", __func__);
+//    PRINT_DEBUG("into function: %s\n", __func__);
 
     if ( IPPROTO_UDP == proto )
         packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
@@ -372,14 +372,14 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
     struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
 
-    PRINT_DEBUG("into function: %s\n", __func__);
+//    PRINT_DEBUG("into function: %s\n", __func__);
 
     memcpy(this_vport, p, sizeof(struct vport));
     bd->p = this_vport;
     bd->skb = skb_mod;
     bd->retrans_times = 0;
     init_timer(&(bd->timer));
-	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
+//	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
     if ( IPPROTO_UDP == ip_header->protocol )
     {
         struct udphdr* udp_header = udp_hdr ( skb_mod );
