@@ -23,6 +23,12 @@ void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr,
 	char* addr_base = (char*)arp_header + sizeof(struct arphdr);
 	unsigned char fake_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
 
+	arp_header->ar_hrd = htons(ARPHRD_ETHER);
+	arp_header->ar_pro = htons(ETH_P_IP);
+	arp_header->ar_hln = ETH_ALEN;
+	arp_header->ar_pln = sizeof(u32);
+	arp_header->ar_op = htons(ARPOP_REPLY);
+
 	if(dmac[ETH_ALEN - 1] != 255)
 		memcpy(addr_base, dmac, ETH_ALEN);
 	else
@@ -53,7 +59,7 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 	skb_new->priority = 0;
 
 	skb_set_network_header(skb_new, 0);
-    skb_put(skb_new, sizeof(struct arphdr) + 2*sizeof(u32) + 2*ETH_ALEN);
+	skb_put(skb_new, sizeof(struct arphdr) + 2*sizeof(u32) + 2*ETH_ALEN);
 	arp_header = arp_hdr(skb);
 	addr_base = (char*)arp_header + sizeof(struct arphdr);
 
