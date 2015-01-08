@@ -17,6 +17,60 @@ void init_packet_dispatcher()
     init_tcp_state();
 }
 
+void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr, unsigned char dmac[ETH_ALEN], u32* daddr)
+{
+	struct arphdr* arp_header = arp_hdr(skb);
+	char* addr_base = (char*)arp_header + sizeof(struct arphdr);
+	unsigned char fake_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+
+	if(dmac[ETH_ALEN - 1] != 255)
+		memcpy(addr_base, dmac, ETH_ALEN);
+	else
+		memcpy(addr_base, fake_mac, ETH_ALEN);
+
+	memcpy(addr_base + ETH_ALEN, daddr, sizeof(u32));
+	memcpy(addr_base + ETH_ALEN + sizeof(u32), smac, ETH_ALEN);
+	memcpy(addr_base + ETH_ALEN + sizeof(u32) + ETH_ALEN, saddr, ETH_ALEN);
+}
+
+void response_arp(struct vport *p, struct sk_buff *skb)
+{
+	struct net_device* netdev = skb->dev;
+	u32 skb_len = sizeof(u32)*2 + ETH_ALEN*2 + sizeof(struct arphdr) + LL_RESERVED_SPACE(netdev);
+	struct sk_buff *skb_new = NULL;
+	struct arphdr* arp_header = NULL;
+	char* addr_base = NULL;
+	struct ethhdr *eth_header = NULL;
+	skb_new = dev_alloc_skb(skb_len);
+	if (!skb_new) 
+		return;
+
+	skb_reserve(skb_new, LL_RESERVED_SPACE(netdev));
+	skb_new->dev = netdev;
+	skb_new->pkt_type = PACKET_OTHERHOST;
+	skb_new->protocol = htons(ETH_P_ARP);
+	skb_new->ip_summed = CHECKSUM_NONE;
+	skb_new->priority = 0;
+
+	skb_set_network_header(skb_new, 0);
+    skb_put(skb_new, sizeof(struct arphdr) + 2*sizeof(u32) + 2*ETH_ALEN);
+	arp_header = arp_hdr(skb);
+	addr_base = (char*)arp_header + sizeof(struct arphdr);
+
+	build_arphdr(skb_new, addr_base, (u32*)(addr_base + ETH_ALEN), addr_base + ETH_ALEN + sizeof(u32), (u32*)(addr_base + (ETH_ALEN*2) + sizeof(u32)));
+
+	eth_header = (struct ethhdr *)skb_push(skb_new, sizeof(struct ethhdr));
+	memset (eth_header, 0, sizeof(struct ethhdr));
+	skb_set_mac_header(skb_new, 0);
+	memset (eth_header, 0, sizeof(struct ethhdr));
+	memcpy(eth_header->h_dest, eth_hdr(skb)->h_source, ETH_ALEN);
+	memcpy(eth_header->h_source, eth_hdr(skb)->h_dest, ETH_ALEN);
+	eth_header->h_proto = htons(ETH_P_ARP);
+	
+	send_skbmod(p, skb_new);
+	return;
+}
+
 int pd_check_action ( struct vport *p, struct sk_buff *skb )
 {
     struct ethhdr* mac_header = eth_hdr ( skb );
@@ -24,8 +78,14 @@ int pd_check_action ( struct vport *p, struct sk_buff *skb )
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
 
+	
     if ( ETH_P_IP != eth_type )
-        return PT_ACTION_CONTINUE;
+	{
+		if(ETH_P_ARP == eth_type)
+			response_arp(p, skb);
+
+		return PT_ACTION_CONTINUE;
+	}
 
     ip_header = ip_hdr ( skb );
     if ( ip_header->protocol != IPPROTO_UDP && ip_header->protocol != IPPROTO_TCP )
@@ -119,13 +179,13 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         struct udphdr* udp_header   = udp_hdr ( skb );
         unsigned short client_port  = ntohs ( udp_header->dest );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
-        //size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
-        //unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-        //truct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
+        size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
+        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
 
-        /*if(data_size)
+        if(data_size)
         {
-            memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
+			memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
             bn->payload.data = data;
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
@@ -135,7 +195,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             this_udp_info->current_seq_mirror = bn->seq_num_next;
             compare_buffer_insert(bn, &this_udp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
-        }*/
+        }
         this_udp_info->mirror_port = ntohs ( udp_header->source );
         if(list_empty(&this_udp_info->buffers.packet_buffer))
         {
@@ -382,16 +442,16 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
         u16 client_port = ntohs ( udp_header->dest );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
         struct list_head* packet_buf = & ( this_udp_info->buffers.packet_buffer );
-        //size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
-        //unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-        //struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
+        size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
+        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
 
         if(this_udp_info->unlock == 0)
             pkt_buffer_barrier_add(packet_buf);
         else
             this_udp_info->unlock--;
 
-        /*if(data_size)
+        if(data_size)
         {
             memcpy ( data, ( char * ) ( ( unsigned char * ) udp_header + sizeof ( struct udphdr ) ), data_size );
             bn->payload.data = data;
@@ -401,9 +461,9 @@ int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
             bn->seq_num_next = bn->seq_num + data_size;
             bn->opt_key = get_tsval(skb);
             this_udp_info->current_seq_target = bn->seq_num_next;
-            //compare_buffer_insert(bn, &this_udp_info->buffers.target_buffer);
-            //do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
-        }*/
+            compare_buffer_insert(bn, &this_udp_info->buffers.target_buffer);
+            do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
+        }
     }
     if ( IPPROTO_TCP == ip_header->protocol )
     {
