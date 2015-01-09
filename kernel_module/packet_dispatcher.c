@@ -1,7 +1,7 @@
 #include "packet_dispatcher.h"
 #include "tcp_state.h"
 
-struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
+//struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
 
 //static struct queue_list_head udp_buffer;
 
@@ -17,11 +17,13 @@ void init_packet_dispatcher()
     init_tcp_state();
 }
 
+static const unsigned char fake_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+
 void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr, unsigned char dmac[ETH_ALEN], u32* daddr)
 {
 	struct arphdr* arp_header = arp_hdr(skb);
 	char* addr_base = (char*)arp_header + sizeof(struct arphdr);
-	unsigned char fake_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+	const unsigned char null_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 	arp_header->ar_hrd = htons(ARPHRD_ETHER);
 	arp_header->ar_pro = htons(ETH_P_IP);
@@ -29,7 +31,7 @@ void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr,
 	arp_header->ar_pln = sizeof(u32);
 	arp_header->ar_op = htons(ARPOP_REPLY);
 
-	if(dmac[ETH_ALEN - 1] != 255)
+	if(memcmp(dmac, null_mac, ETH_ALEN))
 		memcpy(addr_base, dmac, ETH_ALEN);
 	else
 		memcpy(addr_base, fake_mac, ETH_ALEN);
@@ -41,6 +43,7 @@ void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr,
 
 void response_arp(struct vport *p, struct sk_buff *skb)
 {
+	const unsigned char bro_mac[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	struct net_device* netdev = skb->dev;
 	u32 skb_len = sizeof(u32)*2 + ETH_ALEN*2 + sizeof(struct arphdr) + LL_RESERVED_SPACE(netdev);
 	struct sk_buff *skb_new = NULL;
@@ -50,7 +53,7 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 	skb_new = dev_alloc_skb(skb_len);
 	if (!skb_new) 
 		return;
-
+	PRINT_DEBUG("[%s]\n", __func__);
 	skb_reserve(skb_new, LL_RESERVED_SPACE(netdev));
 	skb_new->dev = netdev;
 	skb_new->pkt_type = PACKET_OTHERHOST;
@@ -70,7 +73,14 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 	skb_set_mac_header(skb_new, 0);
 	memset (eth_header, 0, sizeof(struct ethhdr));
 	memcpy(eth_header->h_dest, eth_hdr(skb)->h_source, ETH_ALEN);
-	memcpy(eth_header->h_source, eth_hdr(skb)->h_dest, ETH_ALEN);
+	if(!memcmp(eth_hdr(skb)->h_dest, bro_mac, ETH_ALEN))
+	{
+		mirror.port_no = p->port_no;
+		memcpy(eth_header->h_source, fake_mac, ETH_ALEN);
+	}
+	else
+		memcpy(eth_header->h_source, eth_hdr(skb)->h_dest, ETH_ALEN);
+
 	eth_header->h_proto = htons(ETH_P_ARP);
 	
 	send_skbmod(p, skb_new);

@@ -1,5 +1,4 @@
 #include "packet_comparer.h"
-
 int simple_comparer(char* data1, char* data2, size_t length)
 {
 	int result = memcmp(data1, data2, length);
@@ -7,34 +6,49 @@ int simple_comparer(char* data1, char* data2, size_t length)
 	{
 		int i = 0;
 		size_t remain = length;
-		PRINT_INFO("different:\n");
-		for(i = 0; i < length; i+=16)
+		PRINT_INFO("different: remain %zu\n", remain);
+		for(i = 0; i < 50; i+=16)
 		{
+			char print_buf[64] = {0};
+			char tmp_buf[10];
 			int j = 0;
 			int print_len = min((size_t)16, remain);
-			PRINT_INFO("%05u: ", i);
+			memset(print_buf, 0, sizeof(print_buf));
+			sprintf(tmp_buf, "%05u: ", i);
+			strcat(print_buf, tmp_buf);
 			for(j = 0; j < print_len; ++j)
 			{
-				PRINT_INFO("%02X", (unsigned char)data1[i+j]);
+				sprintf(tmp_buf, "%02X", (unsigned char)data1[i+j]);
+				strcat(print_buf, tmp_buf);
 				if( (i+j) % 2 )
-					PRINT_INFO(" ");
+				{
+					sprintf(tmp_buf, " ");
+					strcat(print_buf, tmp_buf);
+				}
 			}
 			if(remain < 16)
 			{
 				int need_space = 40 - ((remain << 1) + (remain >> 1));
 				int k = 0;
 				for (k = 0; k < need_space; ++k)
-					PRINT_INFO(" ");
+				{
+					sprintf(tmp_buf, " ");
+					strcat(print_buf, tmp_buf);
+				}
 			}
-
-			PRINT_INFO("\t\t");
+			sprintf(tmp_buf, "\t\t");
+			strcat(print_buf, tmp_buf);
 			for(j = 0; j < print_len; ++j)
 			{
-				PRINT_INFO("%02X", (unsigned char)data2[i+j]);
+				sprintf(tmp_buf, "%02X", (unsigned char)data2[i+j]);
+				strcat(print_buf, tmp_buf);
 				if( (i+j) % 2 )
-					PRINT_INFO(" ");
+				{
+					sprintf(tmp_buf, " ");
+					strcat(print_buf, tmp_buf);
+				}
 			}
-			PRINT_INFO("\n");
+			PRINT_INFO("%s\n", print_buf);
 			remain -= print_len;
 		}
 	}
@@ -45,16 +59,24 @@ int simple_comparer(char* data1, char* data2, size_t length)
 		PRINT_INFO("the same:\n");
 		for(i = 0; i < length; i+=16)
 		{
+			char print_buf[64] = {0};
+			char tmp_buf[10] = {0};
 			int j = 0;
 			int print_len = min((size_t)16, remain);
-			PRINT_INFO("%05u: ", i);
+			memset(print_buf, 0, sizeof(print_buf));
+			sprintf(tmp_buf, "%05u: ", i);
+			strcat(print_buf, tmp_buf);
 			for(j = 0; j < print_len; ++j)
 			{
-				PRINT_INFO("%02X", (unsigned char)data1[i+j]);
+				sprintf(tmp_buf, "%02X", (unsigned char)data1[i+j]);
+				strcat(print_buf, tmp_buf);
 				if( (i+j) % 2 )
-					PRINT_INFO(" ");
+				{
+					sprintf(tmp_buf, " ");
+					strcat(print_buf, tmp_buf);
+				}
 			}
-			PRINT_INFO("\n");
+			PRINT_INFO("%s\n", print_buf);
 			remain -= print_len;
 		}
 
@@ -62,25 +84,36 @@ int simple_comparer(char* data1, char* data2, size_t length)
     return result;
 }
 
-
-
 int debug_comparer(char* data1, char* data2, size_t length)
 {
 	int result = memcmp(data1, data2, length);
 	if(result)
-		printk("[%s] %p comapre with %p, size: %zu is different\n", __func__, data1, data2, length);
+		PRINT_DEBUG("[%s] %p comapre with %p, size: %zu is different\n", __func__, data1, data2, length);
 	else
-		printk("[%s] %p comapre with %p, size: %zu is the same\n", __func__, data1, data2, length);
+		PRINT_DEBUG("[%s] %p comapre with %p, size: %zu is the same\n", __func__, data1, data2, length);
 
 	return result;
 }
 
-int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
+int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
     int should_break = INT_MAX;
+	spinlock_t* lock;
     if(compare == NULL)
-        compare = debug_comparer;
-    
+        compare = simple_comparer;
+
+    switch(conn_info->proto)
+	{
+	case IPPROTO_UDP:
+		lock = &(TCP_CONN_INFO(&conn_info_set, conn_info->ip, conn_info->port)->compare_lock);
+		break;
+	case IPPROTO_TCP:
+		lock = &(UDP_CONN_INFO(&conn_info_set, conn_info->ip, conn_info->port)->compare_lock);
+		break;
+	default:
+		return -1;
+	}
+	spin_lock(lock);
     while(should_break--)
     {
         struct data_node* compare_target1 = compare_buffer_getblock(buffer1);
@@ -101,6 +134,7 @@ int do_compare(struct connection_info* con_info, struct compare_buffer* buffer1,
         else
             break;
     }
+	spin_unlock(lock);
 	return 0;
 }
 

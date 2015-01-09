@@ -10,6 +10,8 @@
 #include "util/packet_buffer.h"
 #include "util/compare_buffer.h"
 
+extern struct host_conn_info_set conn_info_set;
+
 struct buf_packet
 {
     struct sk_buff* skb;
@@ -29,6 +31,7 @@ struct tcp_conn_info
     struct list_head* playback_ptr;
     struct list_head* send_wnd_right_dege;
     spinlock_t playback_ptr_lock;
+	spinlock_t compare_lock;
     u32 seq_rmhost;
     u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
     u32 seq_server;
@@ -67,6 +70,7 @@ struct tcp_conn_info
 struct udp_conn_info
 {
     struct commom_buffers buffers;
+	spinlock_t compare_lock;
     u32 current_seq_mirror;
     u32 current_seq_target;
     u32 current_seq_rmhost;

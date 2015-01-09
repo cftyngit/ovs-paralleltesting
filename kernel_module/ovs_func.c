@@ -87,6 +87,7 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
         //printk("PT_ACTION_CONTINUE\n");
 		break;
 	}
+	return;
     /* Look up flow. */
     flow = ovs_flow_tbl_lookup_stats(&dp->table, &key, &n_mask_hit);
     if (unlikely(!flow)) {

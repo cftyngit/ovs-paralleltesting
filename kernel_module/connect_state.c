@@ -1,4 +1,7 @@
 #include "connect_state.h"
+
+struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
+
 static inline void init_buffers(struct commom_buffers* bufs)
 {
     INIT_LIST_HEAD(&(bufs->packet_buffer));
@@ -18,12 +21,14 @@ static inline void init_tcp_info(struct tcp_conn_info* tcp_info)
     tcp_info->playback_ptr = &(tcp_info->buffers.packet_buffer);
     tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer);
     spin_lock_init(&(tcp_info->playback_ptr_lock));
+	spin_lock_init(&(tcp_info->compare_lock));
 }
 
 static inline void init_udp_info(struct udp_conn_info* udp_info)
 {
     memset(udp_info, 0, sizeof(struct udp_conn_info));
     init_buffers(&(udp_info->buffers));
+	spin_lock_init(&(udp_info->compare_lock));
 }
 
 void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 proto, u16 port)

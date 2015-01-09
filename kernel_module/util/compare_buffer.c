@@ -6,10 +6,11 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
     struct list_head *iterator;
     //u32 last_seq_next = head->prev ? list_entry(head->prev, struct buffer_node, list)->seq_num_next : 0;
 	struct list_head* prev = NULL;
+	spin_lock(&(buffer->compare_lock));
     if(list_empty(head))
     {
         list_add(&bn->list, head);
-        return 0;
+        goto exit;
     }
 	list_for_each_prev(iterator, head)
 	{
@@ -23,7 +24,8 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 		list_add(&bn->list, iterator);
 	else
 		printk(KERN_ERR "[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, bn->seq_num_next, list_entry(prev, struct buffer_node, list)->seq_num);
-
+exit:
+	spin_unlock(&(buffer->compare_lock));
     return 0;
 }
 
