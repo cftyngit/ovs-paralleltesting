@@ -53,7 +53,7 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 	skb_new = dev_alloc_skb(skb_len);
 	if (!skb_new) 
 		return;
-	PRINT_DEBUG("[%s]\n", __func__);
+
 	skb_reserve(skb_new, LL_RESERVED_SPACE(netdev));
 	skb_new->dev = netdev;
 	skb_new->pkt_type = PACKET_OTHERHOST;
@@ -74,15 +74,12 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 	memset (eth_header, 0, sizeof(struct ethhdr));
 	memcpy(eth_header->h_dest, eth_hdr(skb)->h_source, ETH_ALEN);
 	if(!memcmp(eth_hdr(skb)->h_dest, bro_mac, ETH_ALEN))
-	{
-		mirror.port_no = p->port_no;
 		memcpy(eth_header->h_source, fake_mac, ETH_ALEN);
-	}
 	else
 		memcpy(eth_header->h_source, eth_hdr(skb)->h_dest, ETH_ALEN);
 
 	eth_header->h_proto = htons(ETH_P_ARP);
-	
+	mirror.port_no = p->port_no;
 	send_skbmod(p, skb_new);
 	return;
 }
