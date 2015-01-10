@@ -72,22 +72,21 @@ void ovs_dp_process_received_packet_hi(struct vport *p, struct sk_buff *skb)
     }
     switch(pd_check_action(p, skb))
 	{
-	case PT_ACTION_DROP:
+	case PT_ACTION_FROM_MIRROR:
 		pd_action_from_mirror(p, skb);
-		kfree_skb(skb);
+		consume_skb(skb);
 		return;
-		break;
-	case PT_ACTION_CLIENT_TO_SERVER:
+	case PT_ACTION_FROM_RMHOST:
 		pd_action_from_client(p, skb);
 		break;
-	case PT_ACTION_SERVER_TO_CLIENT:
+	case PT_ACTION_FROM_TARGET:
 		pd_action_from_server(p, skb);
 		break;
 	case PT_ACTION_CONTINUE:
-        //printk("PT_ACTION_CONTINUE\n");
 		break;
+	case PT_ACTION_DROP:
+		return;
 	}
-	return;
     /* Look up flow. */
     flow = ovs_flow_tbl_lookup_stats(&dp->table, &key, &n_mask_hit);
     if (unlikely(!flow)) {

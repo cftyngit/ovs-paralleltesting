@@ -17,8 +17,9 @@
 
 #define PT_ACTION_CONTINUE 0        /*not IPv4 packet*/
 #define PT_ACTION_DROP -1           /*mirror to client*/
-#define PT_ACTION_CLIENT_TO_SERVER 1
-#define PT_ACTION_SERVER_TO_CLIENT 2
+#define PT_ACTION_FROM_RMHOST 1
+#define PT_ACTION_FROM_TARGET 2
+#define PT_ACTION_FROM_MIRROR 3
 
 #include "kernel_common.h"
 #include "connect_state.h"
@@ -26,12 +27,6 @@
 #include "util/compare_buffer.h"
 #include "util/packet_buffer.h"
 #include "packet_comparer.h"
-
-/*union ip
-{
-    unsigned char c[4];
-    unsigned int i;
-};*/
 
 void init_packet_dispatcher(void);
 

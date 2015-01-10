@@ -486,7 +486,8 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
     unsigned short port;
     union my_ip_type ip;
     int state_reset = 0;
-    int old_state, new_state;
+    int old_state;
+///	int new_state;
 
     if ( ! ( ( skb_client == NULL ) ^ ( skb_mirror == NULL ) ) )
         return state_reset;
@@ -581,7 +582,7 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     }
-    new_state = tcp_state_get(&conn_info_set, ip, port);
+///    new_state = tcp_state_get(&conn_info_set, ip, port);
 ///    if(old_state != new_state )
 ///        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "rmhost" : "mirror", old_state, new_state );
 

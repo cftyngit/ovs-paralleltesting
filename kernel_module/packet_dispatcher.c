@@ -91,12 +91,13 @@ int pd_check_action ( struct vport *p, struct sk_buff *skb )
     struct iphdr* ip_header;
     unsigned short eth_type = ntohs ( mac_header->h_proto );
 
-	
     if ( ETH_P_IP != eth_type )
 	{
-		if(ETH_P_ARP == eth_type)
+		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN))
+		{
 			response_arp(p, skb);
-
+			return PT_ACTION_CONTINUE;
+		}
 		return PT_ACTION_CONTINUE;
 	}
 
@@ -108,18 +109,18 @@ int pd_check_action ( struct vport *p, struct sk_buff *skb )
     ip_dst.i = ip_header->daddr;
 	//printk("[%s] input port: %hu\n", );
 	if(server.port_no && server.port_no == p->port_no)
-		return PT_ACTION_SERVER_TO_CLIENT;
+		return PT_ACTION_FROM_TARGET;
 	else if(mirror.port_no && mirror.port_no == p->port_no)
-		return PT_ACTION_DROP;
+		return PT_ACTION_FROM_MIRROR;
 	else if(server.port_no && mirror.port_no && p->port_no != server.port_no && p->port_no != mirror.port_no)
-		return PT_ACTION_CLIENT_TO_SERVER;
+		return PT_ACTION_FROM_RMHOST;
 
     if ( ip_src.i == server.ip.i )
-        return PT_ACTION_SERVER_TO_CLIENT;
+        return PT_ACTION_FROM_TARGET;
     else if ( ip_src.i == mirror.ip.i )
-        return PT_ACTION_DROP;
+        return PT_ACTION_FROM_MIRROR;
     else if ( ip_dst.i == server.ip.i )
-        return PT_ACTION_CLIENT_TO_SERVER;
+        return PT_ACTION_FROM_RMHOST;
 
     return PT_ACTION_CONTINUE;
 }
