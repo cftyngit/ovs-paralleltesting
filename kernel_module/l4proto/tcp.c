@@ -776,6 +776,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
 
+		PRINT_DEBUG("[%s] send_skbmod\n", __func__);
         send_skbmod ( bd->p, skb_mod );
 
         if(!should_break)

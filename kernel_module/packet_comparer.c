@@ -7,9 +7,9 @@ int simple_comparer(char* data1, char* data2, size_t length)
 		int i = 0;
 		size_t remain = length;
 		PRINT_INFO("different: remain %zu\n", remain);
-		for(i = 0; i < 50; i+=16)
+		for(i = 0; i < length; i+=16)
 		{
-			char print_buf[64] = {0};
+			char print_buf[128] = {0};
 			char tmp_buf[10];
 			int j = 0;
 			int print_len = min((size_t)16, remain);
