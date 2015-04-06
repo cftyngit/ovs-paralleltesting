@@ -15,6 +15,27 @@
 #define UINT32	u32
 #endif
 
+//=============netlink config==============
+#define NLNUM 24
+#define NL_MAXPAYLOAD		4096
+//type lower than 0x10 is reserved for control messages, which is defined in uapi/linux/netlink.h
+//control managenent messages
+#define NLMSG_SUCCESS		0xf0
+#define NLMSG_FAIL			0xff
+#define	NLMSG_SETECHO		0x11
+#define	NLMSG_GETECHO		0x12
+#define	NLMSG_DAEMON_REG	0x13
+#define NLMSG_DAEMON_UNREG	0x14
+
+//setup message
+#define	NLMSG_SETUP_MIRROR	0x20
+#define	NLMSG_SETUP_SERVER	0x21
+
+//data transfer message
+#define NLMSG_DATA_SEND		0x30
+#define NLMSG_DATA_ACK		0x31
+//=============netlink config end==============
+
 union my_ip_type
 {
 	unsigned char c[4];

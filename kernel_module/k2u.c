@@ -1,6 +1,7 @@
 #include "k2u.h"
 
-static struct sock *netlink_sock;
+struct sock *netlink_sock;
+int daemon_pid;
 
 static void udp_receive(struct sk_buff *skb)
 {
@@ -15,6 +16,27 @@ static void udp_receive(struct sk_buff *skb)
 
     switch(nlh->nlmsg_type)
     {
+	case NLMSG_DAEMON_REG:
+	{
+		int ret = 0;
+		if(daemon_pid)
+		{
+			PRINT_ERROR("reg daemon fail\n");
+			ret = NLMSG_FAIL;
+		}
+		else
+		{
+			PRINT_DEBUG("reg daemon success\n");
+			ret = NLMSG_SUCCESS;
+		}
+		daemon_pid = nlh->nlmsg_pid;
+		out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
+		if (!out_skb) 
+			goto failure;
+		out_nlh = nlmsg_put(out_skb, 0, 0, ret, 0, 0); //填充协议头数据
+		nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
+		break;
+	}
     case NLMSG_SETECHO:
         break;
     case NLMSG_GETECHO:

@@ -228,11 +228,17 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
         u32 this_tsval = get_tsval(skb);
 		PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
+		/*
+		 * if connection hasn't setup we ignore all "normal packet"
+		 */
         if(TCP_STATE_LISTEN == this_tcp_info->state && !tcp_header->syn)
         {
             return 0;
         }
-
+		/*
+		 * packet has paload -> insert to compare buffer_node
+		 * syn and fin packet is used to mark head and tail of compare buffer
+		 */
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
             //memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
@@ -274,7 +280,6 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
             else
                 send_size = this_tcp_info->seq_last_send + this_tcp_info->last_send_size - this_ack_seq;
 
-///            printk("[%s] rep_win: %u, send_size: %u\n", __func__, respond_window, send_size);
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
             this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
             slide_send_window(this_tcp_info);
@@ -307,7 +312,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
                     else
                     {
                         ++this_tcp_info->dup_ack_counter;
-                        if(1 && this_tcp_info->dup_ack_counter >= 3)
+                        if(0 && this_tcp_info->dup_ack_counter >= 3)
                         {//add re transmission func here
                             playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
                             this_tcp_info->window_current = respond_window;

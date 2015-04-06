@@ -32,6 +32,7 @@ struct tcp_conn_info
     struct list_head* send_wnd_right_dege;
     spinlock_t playback_ptr_lock;
 	spinlock_t compare_lock;
+	spinlock_t retranstimer_lock;
     u32 seq_rmhost;
     u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
     u32 seq_server;

@@ -22,6 +22,7 @@ static inline void init_tcp_info(struct tcp_conn_info* tcp_info)
     tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer);
     spin_lock_init(&(tcp_info->playback_ptr_lock));
 	spin_lock_init(&(tcp_info->compare_lock));
+	spin_lock_init(&(tcp_info->retranstimer_lock));
 }
 
 static inline void init_udp_info(struct udp_conn_info* udp_info)

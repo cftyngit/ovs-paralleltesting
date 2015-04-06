@@ -605,8 +605,10 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         return -1;
     }
     if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
+	{
+		PRINT_DEBUG("[%s] line %d\n", __func__, __LINE__);
         return 0;
-
+	}
     do
     {
         int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
@@ -618,11 +620,17 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         struct iphdr* ip_header = NULL;
 
         if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
+		{
+			PRINT_DEBUG("[%s] line %d\n", __func__, __LINE__);
             break;
+		}
 ///        printk("[%s] pkt_ptr: %p, wind_r_edge: %p\n", __func__, pkt_ptr_tmp, this_tcp_info->send_wnd_right_dege);
         bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
+		{
+			PRINT_DEBUG("[%s] NULL == bd\n", __func__);
             break;
+		}
         /*
          * peek new packet from packet buffer to see whether it's ack seq is newer
          * than the lastest packet from mirror
@@ -649,14 +657,17 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
                 tmp = build_ack_sk_buff(skb_mod, target_ack_seq);
                 kfree_skb(skb_mod);
                 if(NULL == tmp)
+				{
+					PRINT_DEBUG("[%s] build_ack_sk_buff fail\n", __func__);
                     break;
-
+				}
                 should_break = 1;
                 skb_mod = tmp;
                 pkt_ptr_tmp = this_tcp_info->playback_ptr;
             }
             else
             {
+				PRINT_DEBUG("[%s] TCP_STATE_ESTABLISHED != this_tcp_info->state\n", __func__);
                 kfree_skb(skb_mod);
                 break;
             }
@@ -667,6 +678,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
         if( data_size > this_tcp_info->window_current)
         {
+			PRINT_DEBUG("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
             kfree_skb(skb_mod);
             break;
         }
@@ -674,7 +686,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
-        /*
+/*
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
             struct retransmit_info* info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
@@ -682,18 +694,20 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             info->ip = ip;
             info->list = this_tcp_info->playback_ptr;
             info->tcp_info = this_tcp_info;
-            //printk("[%s] retrans info: %p\n", __func__, info);
+            printk("[%s] retrans info: %p\n", __func__, info);
+			spin_lock(&(this_tcp_info->retranstimer_lock));
             if(timer_pending(&(bd->timer)))
             {
                 del_timer(&(bd->timer));
+				init_timer(&(bd->timer));
             }
-            init_timer(&(bd->timer));
             setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
             //mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
             printk("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
-            mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
+            mod_timer(&(bd->timer), jiffies + (HZ << 1));
+			spin_unlock(&(this_tcp_info->retranstimer_lock));
         }
-        */
+*/
         setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
         /*
          * setup send_window's right edge
@@ -897,9 +911,7 @@ int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, st
     if(NULL == ptr)
         return -1;
 
-    rcu_read_lock();
     setup_playback_ptr(ptr, this_tcp_info);
-    rcu_read_unlock();
     return tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
 }
 
@@ -924,7 +936,9 @@ void retransmit_by_timer(unsigned long ptr)
 
     if(bd->retrans_times < 7)
         bd->retrans_times++;
-
+	PRINT_DEBUG("[%s] before retransmit_form_ptr\n", __func__);
+	rcu_read_lock();
     retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
+	rcu_read_unlock();
 }
 

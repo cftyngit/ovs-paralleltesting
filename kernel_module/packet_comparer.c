@@ -94,7 +94,8 @@ int debug_comparer(char* data1, char* data2, size_t length)
 
 	return result;
 }
-
+extern int daemon_pid;
+extern struct sock *netlink_sock;
 int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
     int should_break = INT_MAX;
@@ -102,6 +103,13 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
     if(compare == NULL)
         compare = simple_comparer;
 
+	struct sk_buff *out_skb;
+	out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
+	if (out_skb) 
+	{
+		nlmsg_put(out_skb, 0, 0, NLMSG_DATA_SEND, 0, 0); //填充协议头数据
+		nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
+	}
     switch(conn_info->proto)
 	{
 	case IPPROTO_UDP:
