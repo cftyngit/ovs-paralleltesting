@@ -1,7 +1,7 @@
 #include "k2u.h"
 
-struct sock *netlink_sock;
-int daemon_pid;
+static struct sock *netlink_sock;
+static int daemon_pid;
 
 static void udp_receive(struct sk_buff *skb)
 {
@@ -150,3 +150,28 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     return 0;
 }
 
+int netlink_sendmes(UINT16 type, char* data, int length)
+{
+	struct nlmsghdr *out_nlh;
+	void *out_payload;
+	struct sk_buff *out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff;
+	if (!out_skb)
+	{
+		PRINT_ERROR("nlmsg_new fail at:%s\n", __func__);
+		goto failure;
+	}
+	out_nlh = nlmsg_put(out_skb, 0, 0, type, length, 0); //填充协议头数据
+	if (!out_nlh) 
+	{
+		PRINT_ERROR("nlmsg_put fail at:%s\n", __func__);
+		goto failure;
+	}
+	out_payload = nlmsg_data(out_nlh);
+	if(0 < length)
+		memmove(out_payload, data, length);
+
+	nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
+	return 0;
+failure:
+	return -1;
+}

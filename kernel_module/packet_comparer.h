@@ -6,6 +6,7 @@
 #include "util/compare_buffer.h"
 #include "connect_state.h"
 #include "kernel_common.h"
+#include "k2u.h"
 
 typedef int (*compare_func)(char*, char*, size_t);
 

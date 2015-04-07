@@ -15,6 +15,6 @@ struct setup_host
 */
 int netlink_init(void);
 void netlink_release(void);
-
+int netlink_sendmes(UINT16 type, char* data, int length);
 int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror);
 #endif

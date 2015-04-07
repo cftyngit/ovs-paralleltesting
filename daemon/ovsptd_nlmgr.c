@@ -9,8 +9,7 @@ int nl_init()
 	int ret = 0;
 	UINT16 ret_type = 0;
 	char* data;
-//	struct msghdr msg;
-//	struct nlmsghdr *nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(sizeof(struct nlmsghdr)));
+
 	if(nl_sockfd)
 		return 0;
 
@@ -29,6 +28,24 @@ int nl_init()
 	}
 
 	nl_sockfd = ret;
+	return 0;
+}
+
+int nl_uninit()
+{
+	UINT16 ret_type = 0;
+	char* data;
+
+	if(!nl_sockfd)
+		return 0;
+
+	if(0 > send_nl_message(ret, NLMSG_DAEMON_UNREG, NULL, 0))
+		return -1;
+
+	if(0 > recv_nl_message(&ret_type, &data))
+		return -1;
+
+	nl_sockfd = 0;
 	return 0;
 }
 
