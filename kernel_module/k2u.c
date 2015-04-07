@@ -154,24 +154,32 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 {
 	struct nlmsghdr *out_nlh;
 	void *out_payload;
-	struct sk_buff *out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff;
-	if (!out_skb)
+	int remain = length;
+	int send_size = 0;
+	do
 	{
-		PRINT_ERROR("nlmsg_new fail at:%s\n", __func__);
-		goto failure;
-	}
-	out_nlh = nlmsg_put(out_skb, 0, 0, type, length, 0); //填充协议头数据
-	if (!out_nlh) 
-	{
-		PRINT_ERROR("nlmsg_put fail at:%s\n", __func__);
-		goto failure;
-	}
-	out_payload = nlmsg_data(out_nlh);
-	if(0 < length)
-		memmove(out_payload, data, length);
+		struct sk_buff *out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff;
+		int send_block = remain > NL_MAXPAYLOAD ? NL_MAXPAYLOAD : remain;
+		if (!out_skb)
+		{
+			PRINT_ERROR("nlmsg_new fail at:%s\n", __func__);
+			goto failure;
+		}
+		out_nlh = nlmsg_put(out_skb, 0, 0, type, send_block, 0); //填充协议头数据
+		if (!out_nlh) 
+		{
+			PRINT_ERROR("nlmsg_put fail at:%s\n", __func__);
+			goto failure;
+		}
+		out_payload = nlmsg_data(out_nlh);
+		if(0 < remain)
+			memmove(out_payload, data, send_block);
 
-	nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
-	return 0;
+		nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
+		remain -= send_block;
+		send_size += send_block;
+	}while(0 < remain);
+	return send_size;
 failure:
 	return -1;
 }

@@ -93,8 +93,18 @@ int main()
 			{
 				UINT16 type = 0;
 				char* data;
+				int size = 0;
 				printf("waiting packet\n");
-				recv_nl_message(&type, &data);
+				size = recv_nl_message(&type, (void**)&data);
+				printf("receive mes type: %x, length: %d\n", type, size);
+				if(type == NLMSG_DATA_INFO)
+				{
+					struct connection_info* inf = (struct connection_info*)data;
+					printf("host type: %d\n", inf->host_type);
+					printf("IP: %hhu.%hhu.%hhu.%hhu:%hu\n", inf->ip.c[0], 
+						inf->ip.c[1], inf->ip.c[2], inf->ip.c[3], inf->port
+					);
+				}
 			}
 		default:
 			continue;
