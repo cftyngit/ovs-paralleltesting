@@ -14,6 +14,9 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("OVS parallel testing");
 MODULE_AUTHOR("cftyn, <cftyn1@gmail.com>");
 
+int send_to_user = 1;
+module_param(send_to_user, int, S_IRUGO|S_IWUSR);
+
 static unsigned long target;
 
 static int __init lkm_init(void)

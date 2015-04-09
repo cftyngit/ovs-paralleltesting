@@ -20,7 +20,7 @@
 #define PRINT_INFO(str, ...)	do {} while (0)
 #endif
 
-#if NOERR==1
+#if NOERR==0
 #define PRINT_ERROR(str, ...)	do {printk(KERN_ERR str, ##__VA_ARGS__);} while (0)
 #else
 #define PRINT_ERROR(str, ...)	do {} while (0)

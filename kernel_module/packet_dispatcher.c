@@ -227,7 +227,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_MIRROR};
         u32 this_tsval = get_tsval(skb);
-		PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
+		PRINT_DEBUG("[%s] input port: %hu, data_size: %zu\n", __func__, p->port_no, data_size);
 		/*
 		 * if connection hasn't setup we ignore all "normal packet"
 		 */

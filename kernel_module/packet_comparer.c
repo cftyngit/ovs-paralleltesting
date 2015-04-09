@@ -94,10 +94,11 @@ int debug_comparer(char* data1, char* data2, size_t length)
 
 	return result;
 }
-
+extern int send_to_user;
 int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
 	spinlock_t* lock;
+	int should_break = INT_MAX;
 
 	if(compare == NULL)
 		compare = simple_comparer;
@@ -117,9 +118,8 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 	/*
 	 * compare at kernel
 	 */
-	/*
+	if(!send_to_user)
 	{
-		int should_break = INT_MAX;
 		while(should_break--)
 		{
 			struct data_node* compare_target1 = compare_buffer_getblock(buffer1);
@@ -141,11 +141,11 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 				break;
 		}
 	}
-	*/
+	else
+	{
 	/*
 	 * send to user space
 	 */
-	{
 		struct compare_buffer* buffer = NULL;
 		struct data_node* ct = NULL;
 		if(HOST_TYPE_TARGET == conn_info->host_type)
@@ -153,18 +153,14 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 		else
 			buffer = buffer2;
 
-		if((ct = compare_buffer_getblock(buffer)))
+		while((should_break--) && (ct = compare_buffer_getblock(buffer)))
 		{
-			netlink_sendmes(NLMSG_DATA_INFO, (char*)conn_info, sizeof(struct connection_info));
-			do
-			{
-				unsigned char* send_data = ct->data + (ct->length - ct->remain);
-				int send_size = 0;
-
-				send_size = netlink_sendmes(NLMSG_DATA_SEND, send_data, ct->remain);
-				compare_buffer_consume(send_size, buffer);
-			}while((ct = compare_buffer_getblock(buffer)));
+			unsigned char* send_data = ct->data + (ct->length - ct->remain);
+			int send_size = 0;
+			send_size = netlink_send_data(conn_info, send_data, ct->remain);
+			compare_buffer_consume(send_size, buffer);
 		}
+		
 	}
 	spin_unlock(lock);
 	return 0;

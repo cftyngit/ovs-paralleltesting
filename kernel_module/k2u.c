@@ -2,6 +2,7 @@
 
 static struct sock *netlink_sock;
 static int daemon_pid;
+static spinlock_t send_lock;
 
 static void udp_receive(struct sk_buff *skb)
 {
@@ -106,8 +107,7 @@ int netlink_init(void)
         #endif
     }
     #endif
-    //struct netlink_kernel_cfg cfg = {.input = udp_receive, };
-    //netlink_sock = netlink_kernel_create(&init_net, 24, &cfg);
+    spin_lock_init(&(send_lock));
     return netlink_sock ? 0 : -1;
 }
 
@@ -152,23 +152,25 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
 
 int netlink_sendmes(UINT16 type, char* data, int length)
 {
+	int should_break = INT_MAX;
 	struct nlmsghdr *out_nlh;
 	void *out_payload;
 	int remain = length;
 	int send_size = 0;
+	spin_lock(&(send_lock));
 	do
 	{
 		struct sk_buff *out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff;
-		int send_block = remain > NL_MAXPAYLOAD ? NL_MAXPAYLOAD : remain;
+		int send_block = min((unsigned long)remain, NL_MAXPAYLOAD);
 		if (!out_skb)
 		{
-			PRINT_ERROR("nlmsg_new fail at:%s\n", __func__);
+			PRINT_ERROR("[%s] nlmsg_new fail\n", __func__);
 			goto failure;
 		}
 		out_nlh = nlmsg_put(out_skb, 0, 0, type, send_block, 0); //填充协议头数据
 		if (!out_nlh) 
 		{
-			PRINT_ERROR("nlmsg_put fail at:%s\n", __func__);
+			PRINT_ERROR("[%s] nlmsg_put fail at\n", __func__);
 			goto failure;
 		}
 		out_payload = nlmsg_data(out_nlh);
@@ -176,10 +178,42 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 			memmove(out_payload, data, send_block);
 
 		nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
+		PRINT_DEBUG("[%s] send block: %d\n", __func__, send_block);
+		PRINT_DEBUG("[%s] remain: %d\n", __func__, remain);
 		remain -= send_block;
 		send_size += send_block;
-	}while(0 < remain);
+	}while(0 < remain && should_break--);
+	spin_unlock(&(send_lock));
 	return send_size;
+
 failure:
+	spin_unlock(&(send_lock));
 	return -1;
+}
+
+int netlink_send_data(struct connection_info* info, char* data, int length)
+{
+	const int data_capacity = NL_MAXPAYLOAD - sizeof(struct connection_info);
+	int should_break = INT_MAX;
+	int remain = length;
+	int send_size = 0;
+	char* buffer = kmalloc(NL_MAXPAYLOAD, GFP_KERNEL); //NL_MAXPAYLOAD is too large to alloc in stack
+	char* data_begin = buffer + sizeof(struct connection_info);
+	memmove(buffer, info, sizeof(struct connection_info));
+	while(remain > 0 && should_break--)
+	{
+		int send_block = min(data_capacity, remain);
+		int actual_send = 0;
+		PRINT_DEBUG("[%s] send block: %d\n", __func__, send_block);
+		PRINT_DEBUG("[%s] remain: %d\n", __func__, remain);
+		memmove(data_begin, data + (length - remain), send_block);
+		actual_send = netlink_sendmes(NLMSG_DATA_SEND, buffer, send_block + sizeof(struct connection_info));
+		if(actual_send < 0)
+			break;
+
+		remain -= actual_send;
+		send_size += actual_send;
+	}
+	kfree(buffer);
+	return send_size;
 }
