@@ -97,7 +97,7 @@ int main()
 				printf("waiting packet\n");
 				size = recv_nl_message(&type, (void**)&data);
 				printf("receive mes type: %x, length: %d\n", type, size);
-				if(type == NLMSG_DATA_INFO)
+				if(type == NLMSG_DATA_SEND)
 				{
 					struct connection_info* inf = (struct connection_info*)data;
 					printf("host type: %d\n", inf->host_type);

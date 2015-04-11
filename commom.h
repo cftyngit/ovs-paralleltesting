@@ -17,7 +17,11 @@
 
 //=============netlink config==============
 #define NLNUM 24
+#ifndef __KERNEL__
+#define NL_MAXPAYLOAD		4096
+#else
 #define NL_MAXPAYLOAD		NLMSG_DEFAULT_SIZE
+#endif
 //type lower than 0x10 is reserved for control messages, which is defined in uapi/linux/netlink.h
 //control managenent messages
 #define NLMSG_SUCCESS		0xf0
