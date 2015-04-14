@@ -4,26 +4,9 @@
 //const union ip server = {{10, 0, 0, 2},};
 //const union ip mirror = {{10, 0, 0, 3},};
 struct host_info server = {{{10, 0, 0, 2}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, 0};
-struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}, 4};
+struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}, 0};
 //struct host_info server = {{{192, 168, 2, 1}}, {0xc0, 0xa0, 0xbb, 0xdc, 0xfa, 0x57}, 0};
 //struct host_info mirror = {{{192, 168, 3, 1}}, {0xc8, 0xd3, 0xa3, 0x98, 0x65, 0xdf}, 3};
-
-static int do_output(struct datapath *dp, struct sk_buff *skb, int out_port)
-{
-	struct vport *vport;
-
-	if (unlikely(!skb))
-		return -ENOMEM;
-
-	vport = ovs_vport_rcu(dp, out_port);
-	if (unlikely(!vport)) {
-		kfree_skb(skb);
-		return -ENODEV;
-	}
-
-	ovs_vport_send(vport, skb);
-	return 0;
-}
 
 void print_skb ( struct sk_buff *skb )
 {
@@ -77,78 +60,12 @@ void print_skb ( struct sk_buff *skb )
 	return;
 }
 
-void send_skbmod ( struct vport *p, struct sk_buff *skb_mod )
+inline void send_skbmod ( struct sk_buff *skb_mod, struct other_args* arg )
 {
-    struct datapath *dp = p->dp;
-    struct sw_flow *flow;
-    struct dp_stats_percpu *stats;
-    struct sw_flow_key key;
-    u64 *stats_counter;
-    u32 n_mask_hit;
-    int error;
-
-	if(mirror.port_no)
-	{
-		do_output(dp, skb_mod, mirror.port_no);
-		return;
-	}
-    stats = this_cpu_ptr(dp->stats_percpu);
-
-    /* Extract flow from 'skb' into 'key'. */
-    error = ovs_flow_extract(skb_mod, p->port_no, &key);
-    if (unlikely(error)) {
-        kfree_skb(skb_mod);
-        return;
-    }
-    
-    /* Look up flow. */
-    flow = ovs_flow_tbl_lookup_stats(&dp->table, &key, &n_mask_hit);
-    if (unlikely(!flow)) {
-        struct dp_upcall_info upcall;
-
-        upcall.cmd = OVS_PACKET_CMD_MISS;
-        upcall.key = &key;
-        upcall.userdata = NULL;
-
-        upcall.portid = ovs_vport_find_upcall_portid(p, skb_mod);
-        PRINT_DEBUG("[%s] upcall port: %u\n", __func__, upcall.portid);
-        //return;
-        error = ovs_dp_upcall(dp, skb_mod, &upcall);
-        //return;
-        if (unlikely(error))
-            kfree_skb(skb_mod);
-        else
-            consume_skb(skb_mod);
-        stats_counter = &stats->n_missed;
-        goto out;
-    }
-    //printk("[%s] %p\n", __func__, skb_mod);
-    //printk("[%s] %p\n", __func__, OVS_CB(skb_mod));
-    //return;
-    OVS_CB(skb_mod)->flow = flow;
-    
-    OVS_CB(skb_mod)->pkt_key = &key;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
-    ovs_flow_stats_update(OVS_CB(skb_mod)->flow, key.tp.flags, skb_mod);
-#else
-    ovs_flow_stats_update(OVS_CB(skb_mod)->flow, skb_mod);
-#endif
-    ovs_execute_actions(dp, skb_mod);
-    stats_counter = &stats->n_hit;
-
-out:
-    /* Update datapath statistics. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
-    u64_stats_update_begin(&stats->syncp);
-    (*stats_counter)++;
-    stats->n_mask_hit += n_mask_hit;
-    u64_stats_update_end(&stats->syncp);
-#else
-    u64_stats_update_begin(&stats->sync);
-    (*stats_counter)++;
-    stats->n_mask_hit += n_mask_hit;
-    u64_stats_update_end(&stats->sync);
-#endif
+	if(0 && mirror.port_no)
+		ovs_vport_output(skb_mod, mirror.port_no, arg);
+	else
+		ovs_normal_output(skb_mod, arg);
 }
 
 int pd_modify_ip_mac ( struct sk_buff* skb_mod )
@@ -166,7 +83,9 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
 #else
     memcpy(mac_header->h_dest, mirror.mac, ETH_ALEN);
 #endif
-    ovs_skb_postpush_rcsum(skb_mod, eth_hdr(skb_mod), ETH_ALEN * 2);
+//	ovs_skb_postpush_rcsum(skb_mod, eth_hdr(skb_mod), ETH_ALEN * 2);
+	if (skb_mod->ip_summed == CHECKSUM_COMPLETE)
+		skb_mod->csum = csum_add(skb_mod->csum, csum_partial((const void*)eth_hdr(skb_mod), ETH_ALEN * 2, 0));
     //memcpy(mac_header->h_dest, mirror.mac, 6);
     if (ip_header->protocol == IPPROTO_TCP)
     {

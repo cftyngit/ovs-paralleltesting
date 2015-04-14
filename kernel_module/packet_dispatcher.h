@@ -13,7 +13,7 @@
 #include <linux/radix-tree.h>
 #include <uapi/linux/in.h>
 
-#include "ovs_func.h"
+#include "ovs/ovs_func.h"
 
 #define PT_ACTION_CONTINUE 0        /*not IPv4 packet*/
 #define PT_ACTION_DROP -1           /*mirror to client*/
@@ -30,11 +30,11 @@
 
 void init_packet_dispatcher(void);
 
-int pd_check_action(struct vport *p, struct sk_buff *skb);
+int pd_check_action(struct sk_buff *skb, struct other_args *arg);
 
-int pd_action_from_mirror(struct vport *p, struct sk_buff *skb);
-int pd_action_from_client(struct vport *p, struct sk_buff *skb);
-int pd_action_from_server(struct vport *p, struct sk_buff *skb);
+int pd_action_from_mirror(struct sk_buff *skb, struct other_args *arg);
+int pd_action_from_client(struct sk_buff *skb, struct other_args *arg);
+int pd_action_from_server(struct sk_buff *skb, struct other_args *arg);
 
 #endif
 

@@ -791,7 +791,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         this_tcp_info->last_send_size = data_size;
 
 		PRINT_DEBUG("[%s] send_skbmod\n", __func__);
-        send_skbmod ( bd->p, skb_mod );
+        //send_skbmod ( bd->p, skb_mod );
+		send_skbmod(skb_mod, bd->p);
 
         if(!should_break)
             state_reset = set_tcp_state ( bd->skb, NULL );

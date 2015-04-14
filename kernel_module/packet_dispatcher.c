@@ -41,7 +41,7 @@ void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr,
 	memcpy(addr_base + ETH_ALEN + sizeof(u32) + ETH_ALEN, saddr, ETH_ALEN);
 }
 
-void response_arp(struct vport *p, struct sk_buff *skb)
+void response_arp(struct sk_buff *skb, struct other_args* arg)
 {
 	const unsigned char bro_mac[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	struct net_device* netdev = skb->dev;
@@ -79,12 +79,13 @@ void response_arp(struct vport *p, struct sk_buff *skb)
 		memcpy(eth_header->h_source, eth_hdr(skb)->h_dest, ETH_ALEN);
 
 	eth_header->h_proto = htons(ETH_P_ARP);
-	mirror.port_no = p->port_no;
-	send_skbmod(p, skb_new);
+	mirror.port_no = ovs_get_port_no(arg);
+	send_skbmod(skb_new, arg);
+//	send_skbmod(p, skb_new);
 	return;
 }
 
-int pd_check_action ( struct vport *p, struct sk_buff *skb )
+int pd_check_action (struct sk_buff *skb, struct other_args* arg)
 {
     struct ethhdr* mac_header = eth_hdr ( skb );
     union my_ip_type ip_src, ip_dst;
@@ -95,7 +96,7 @@ int pd_check_action ( struct vport *p, struct sk_buff *skb )
 	{
 		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN))
 		{
-			response_arp(p, skb);
+			response_arp(skb, arg);
 			return PT_ACTION_CONTINUE;
 		}
 		return PT_ACTION_CONTINUE;
@@ -108,11 +109,11 @@ int pd_check_action ( struct vport *p, struct sk_buff *skb )
     ip_src.i = ip_header->saddr;
     ip_dst.i = ip_header->daddr;
 	//printk("[%s] input port: %hu\n", );
-	if(server.port_no && server.port_no == p->port_no)
+	if(server.port_no && server.port_no == ovs_get_port_no(arg))
 		return PT_ACTION_FROM_TARGET;
-	else if(mirror.port_no && mirror.port_no == p->port_no)
+	else if(mirror.port_no && mirror.port_no == ovs_get_port_no(arg))
 		return PT_ACTION_FROM_MIRROR;
-	else if(server.port_no && mirror.port_no && p->port_no != server.port_no && p->port_no != mirror.port_no)
+	else if(server.port_no && mirror.port_no && ovs_get_port_no(arg) != server.port_no && ovs_get_port_no(arg) != mirror.port_no)
 		return PT_ACTION_FROM_RMHOST;
 
     if ( ip_src.i == server.ip.i )
@@ -161,7 +162,8 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             if(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port)
                 udp_header->dest = htons(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port);
 
-            send_skbmod ( bd->p, skb_mod );
+            //send_skbmod ( bd->p, skb_mod );
+			send_skbmod(skb_mod, bd->p);
             kfree(bd->p);
             kfree(bd);
             bd = pkt_buffer_get_data ( packet_buf );
@@ -181,7 +183,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     return 0;
 }
 
-int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
+int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
@@ -227,7 +229,7 @@ int pd_action_from_mirror ( struct vport *p, struct sk_buff *skb )
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
         u32 this_tsval = get_tsval(skb);
-		PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
+		PRINT_DEBUG("[%s] input port: %hu\n", __func__, ovs_get_port_no(arg));
 		/*
 		 * if connection hasn't setup we ignore all "normal packet"
 		 */
@@ -374,21 +376,20 @@ retransmission:
     return 0;
 }
 
-int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
+int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 {
     struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
     struct iphdr* ip_header = ip_hdr ( skb_mod );
     union my_ip_type ip = {.i = ip_header->saddr,};
     struct list_head* packet_buf = NULL;
-
-    struct vport* this_vport = kmalloc(sizeof(struct vport), GFP_KERNEL);
+    struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
     struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
 
 //    PRINT_DEBUG("into function: %s\n", __func__);
 
-    memcpy(this_vport, p, sizeof(struct vport));
-    bd->p = this_vport;
+    memcpy(this_args, arg, sizeof_other_args);
+    bd->p = this_args;
     bd->skb = skb_mod;
     bd->retrans_times = 0;
     init_timer(&(bd->timer));
@@ -450,7 +451,7 @@ int pd_action_from_client ( struct vport *p, struct sk_buff *skb )
     return 0;
 }
 
-int pd_action_from_server ( struct vport *p, struct sk_buff *skb )
+int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};

@@ -5,17 +5,18 @@
 #include <linux/spinlock.h>
 
 #include "kernel_common.h"
-#include "ovs_func.h"
+#include "ovs/ovs_func.h"
 #include "tcp_state.h"
 #include "util/packet_buffer.h"
 #include "util/compare_buffer.h"
 
 extern struct host_conn_info_set conn_info_set;
+union my_ip_type;
 
 struct buf_packet
 {
     struct sk_buff* skb;
-    struct vport* p;
+    struct other_args* p;
 };
 
 struct commom_buffers

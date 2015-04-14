@@ -4,7 +4,7 @@
 #include <linux/skbuff.h>
 
 #include "hook.h"
-#include "ovs_func.h"
+#include "ovs/ovs_func.h"
 #include "k2u.h"
 #include "l4proto/tcp.h"
 
@@ -18,9 +18,9 @@ static unsigned long target;
 
 static int __init lkm_init(void)
 {
-    char *sym_name = "ovs_dp_process_received_packet";
+    //char *sym_name = "ovs_dp_process_received_packet";
     request_module("openvswitch.ko");
-    target = kallsyms_lookup_name(sym_name);
+    target = kallsyms_lookup_name(ovs_hook_sym_name);
 
     if(target == 0)
     {
@@ -29,11 +29,11 @@ static int __init lkm_init(void)
     }
 
     init_packet_dispatcher();
-    if(0 > init_ovs_func())
+    if(0 > ovs_init_func())
         return -1;
 
-    PRINT_INFO("[%s] %s (0x%lx)\n", __this_module.name, sym_name, target);
-    hijack_start((void*)target, &ovs_dp_process_received_packet_hi);
+    PRINT_INFO("[%s] %s (0x%lx)\n", __this_module.name, ovs_hook_sym_name, target);
+    hijack_start((void*)target, ovs_hook_func);
 
     if(!netlink_init())
         PRINT_INFO("netlink init success\n");

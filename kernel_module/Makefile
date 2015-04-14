@@ -1,5 +1,6 @@
 obj-m += find_k_func.o
-find_k_func-objs := main.o hook.o ovs_func.o packet_dispatcher.o k2u.o connect_state.o l4proto/tcp.o util/compare_buffer.o packet_comparer.o util/packet_buffer.o kernel_common.o
+#find_k_func-objs := main.o hook.o ovs_func.o packet_dispatcher.o k2u.o connect_state.o l4proto/tcp.o util/compare_buffer.o packet_comparer.o util/packet_buffer.o kernel_common.o
+find_k_func-objs := main.o hook.o ovs/3.19/ovs_func.o packet_dispatcher.o k2u.o connect_state.o l4proto/tcp.o util/compare_buffer.o packet_comparer.o util/packet_buffer.o kernel_common.o
 
 INFO_ON = 1
 DEBUG_ON = 1
