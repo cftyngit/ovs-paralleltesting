@@ -77,16 +77,22 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
     int transport_len = skb_mod->len - skb_transport_offset(skb_mod);
     __be32 *addr = &(ip_header->daddr);
     __be32 new_addr = mirror.ip.i;
+	/*
+	 * modify from set_eth_addr in openvswitch/action.c
+	 */
     skb_postpull_rcsum(skb_mod, eth_hdr(skb_mod), ETH_ALEN * 2);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0)
     ether_addr_copy(eth_hdr(skb_mod)->h_dest, mirror.mac);
 #else
     memcpy(mac_header->h_dest, mirror.mac, ETH_ALEN);
 #endif
-//	ovs_skb_postpush_rcsum(skb_mod, eth_hdr(skb_mod), ETH_ALEN * 2);
+
 	if (skb_mod->ip_summed == CHECKSUM_COMPLETE)
 		skb_mod->csum = csum_add(skb_mod->csum, csum_partial((const void*)eth_hdr(skb_mod), ETH_ALEN * 2, 0));
-    //memcpy(mac_header->h_dest, mirror.mac, 6);
+////////modify eth mac finish/////////////////////
+	/*
+	 * modify from set_ip_addr in openvswitch/action.c
+	 */
     if (ip_header->protocol == IPPROTO_TCP)
     {
         if (likely(transport_len >= sizeof(struct tcphdr)))
@@ -108,13 +114,7 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
     }
 
     csum_replace4(&ip_header->check, *addr, new_addr);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
-    ;
-#elif (LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0))
-    skb_mod->rxhash = 0;
-#else
-    skb_mod->hash = 0;
-#endif
+	skb_clear_hash(skb_mod);
     *addr = new_addr;
     //ip_header->daddr = mirror.ip.i;
     //ip_header->check = 0;

@@ -24,7 +24,7 @@ static int __init lkm_init(void)
 
     if(target == 0)
     {
-		PRINT_ERROR("can't find kernel function: %s\n", sym_name);
+		PRINT_ERROR("can't find kernel function: %s\n", ovs_hook_sym_name);
 		return -1;
     }
 

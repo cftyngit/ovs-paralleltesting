@@ -99,14 +99,15 @@ inline void ovs_normal_output(struct sk_buff *skb, struct other_args *args)
 	struct sw_flow_key key;
 	int error;
 	
-	printk(KERN_EMERG "[%s] tun_info: %p, skb: %p, key: %p\n", __func__, args->tun_info, skb, &key);
+	if(NULL == OVS_CB(skb)->input_vport)
+		OVS_CB(skb)->input_vport = args->vport;
 
 	error = ovs_flow_key_extract(args->tun_info, skb, &key);
 	if (unlikely(error)) {
 		kfree_skb(skb);
 		return;
 	}
-	return;
+
 	ovs_dp_process_packet(skb, &key);
 }
 

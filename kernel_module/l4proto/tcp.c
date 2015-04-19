@@ -755,7 +755,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             else if ( seq_rmhost_fake < seq_rmhost )
                 tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
         }
-///        printk("[%s] send_pkt: seq: %u, ack_seq: %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
         this_tcp_info->window_current -= data_size;
         /*
         if(this_tcp_info->mirror_port)
@@ -763,29 +762,24 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         */
         if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
             this_tcp_info->tsval_last_send = get_tsval(skb_mod);
-
         setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
-
         if(this_tcp_info->mirror_port)
         {
+			/*
+			 * modify from set_tp_port in openvswich/action.c
+			 */
             inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 1);
             tcp_header->dest = htons(this_tcp_info->mirror_port);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
-		    ;
-#elif (LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0))
-		    skb_mod->rxhash = 0;
-#else
-			skb_mod->hash = 0;
-#endif
+			skb_clear_hash(skb_mod);
         }
-		if(data_size < 1460)
+		/*if(data_size < 1460)
 		{
 			tcp_header->check = 0;
 			skb_mod->csum = csum_partial((unsigned char *)tcp_header, ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), 0);
 			tcp_header->check = csum_tcpudp_magic(ip_header->saddr, ip_header->daddr,
                                               ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), ip_header->protocol, skb_mod->csum);
-		}
+		}*/
         this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
