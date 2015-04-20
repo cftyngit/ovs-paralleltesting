@@ -6,13 +6,11 @@
 const char* ovs_hook_sym_name = "ovs_vport_receive";
 
 #define ovs_flow_key_extract (*ovs_flow_key_extract_hi)
-#define ovs_vport_find_upcall_portid (*ovs_vport_find_upcall_portid_hi)
 #define ovs_dp_process_packet (*ovs_dp_process_packet_hi)
 #define ovs_vport_send (*ovs_vport_send_hi)
 #define ovs_lookup_vport (*ovs_lookup_vport_hi)
 
 int (*ovs_flow_key_extract_hi)(const struct ovs_tunnel_info *tun_info, struct sk_buff *skb, struct sw_flow_key *key);
-u32 (*ovs_vport_find_upcall_portid_hi)(const struct vport *, struct sk_buff *);
 void (*ovs_dp_process_packet_hi)(struct sk_buff *skb, struct sw_flow_key *key);
 int (*ovs_vport_send_hi)(struct vport *, struct sk_buff *);
 struct vport* (*ovs_lookup_vport_hi)(const struct datapath *, u16);
@@ -31,10 +29,6 @@ int ovs_init_func(void)
 {
 	ovs_flow_key_extract_hi = (void*)kallsyms_lookup_name("ovs_flow_key_extract");
 	if(ovs_flow_key_extract_hi == 0)
-		return -1;
-
-	ovs_vport_find_upcall_portid_hi = (void*)kallsyms_lookup_name("ovs_vport_find_upcall_portid");
-	if(ovs_vport_find_upcall_portid_hi == 0)
 		return -1;
 
 	ovs_dp_process_packet_hi = (void*)kallsyms_lookup_name("ovs_dp_process_packet");
