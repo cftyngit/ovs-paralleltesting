@@ -17,7 +17,11 @@
 
 //=============netlink config==============
 #define NLNUM 24
+#ifndef __KERNEL__
 #define NL_MAXPAYLOAD		4096
+#else
+#define NL_MAXPAYLOAD		NLMSG_DEFAULT_SIZE
+#endif
 //type lower than 0x10 is reserved for control messages, which is defined in uapi/linux/netlink.h
 //control managenent messages
 #define NLMSG_SUCCESS		0xf0
@@ -34,7 +38,11 @@
 //data transfer message
 #define NLMSG_DATA_SEND		0x30
 #define NLMSG_DATA_ACK		0x31
+#define NLMSG_DATA_INFO		0x32
 //=============netlink config end==============
+
+#define HOST_TYPE_TARGET	1
+#define HOST_TYPE_MIRROR	2
 
 union my_ip_type
 {
@@ -54,6 +62,7 @@ struct connection_info
 	union my_ip_type ip;
 	UINT16 port;
 	UINT8 proto;
+	UINT8 host_type;
 };
 
 #endif

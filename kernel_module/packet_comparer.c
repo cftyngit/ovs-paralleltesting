@@ -94,16 +94,16 @@ int debug_comparer(char* data1, char* data2, size_t length)
 
 	return result;
 }
-
+extern int send_to_user;
 int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1, struct compare_buffer* buffer2, compare_func compare)
 {
-    int should_break = INT_MAX;
 	spinlock_t* lock;
-    if(compare == NULL)
-        compare = simple_comparer;
+	int should_break = INT_MAX;
 
-	netlink_sendmes(NLMSG_DATA_SEND, NULL, 0);
-    switch(conn_info->proto)
+	if(compare == NULL)
+		compare = simple_comparer;
+
+	switch(conn_info->proto)
 	{
 	case IPPROTO_UDP:
 		lock = &(TCP_CONN_INFO(&conn_info_set, conn_info->ip, conn_info->port)->compare_lock);
@@ -115,26 +115,53 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 		return -1;
 	}
 	spin_lock(lock);
-    while(should_break--)
-    {
-        struct data_node* compare_target1 = compare_buffer_getblock(buffer1);
-        struct data_node* compare_target2 = compare_buffer_getblock(buffer2);
+	/*
+	 * compare at kernel
+	 */
+	if(!send_to_user)
+	{
+		while(should_break--)
+		{
+			struct data_node* compare_target1 = compare_buffer_getblock(buffer1);
+			struct data_node* compare_target2 = compare_buffer_getblock(buffer2);
 
-        if ( compare_target1 != NULL && compare_target2 != NULL )
-        {
-            unsigned char* cmp_data1 = compare_target1->data + (compare_target1->length - compare_target1->remain);
-            unsigned char* cmp_data2 = compare_target2->data + (compare_target2->length - compare_target2->remain);
-            size_t compare_size = min(compare_target1->remain, compare_target2->remain);
-            if(compare_size > 0)
-            {
-                compare ( cmp_data1, cmp_data2, compare_size );
-                compare_buffer_consume(compare_size, buffer1);
-				compare_buffer_consume(compare_size, buffer2);
-            }
-        }
-        else
-            break;
-    }
+			if ( compare_target1 != NULL && compare_target2 != NULL )
+			{
+				unsigned char* cmp_data1 = compare_target1->data + (compare_target1->length - compare_target1->remain);
+				unsigned char* cmp_data2 = compare_target2->data + (compare_target2->length - compare_target2->remain);
+				size_t compare_size = min(compare_target1->remain, compare_target2->remain);
+				if(compare_size > 0)
+				{
+					compare ( cmp_data1, cmp_data2, compare_size );
+					compare_buffer_consume(compare_size, buffer1);
+					compare_buffer_consume(compare_size, buffer2);
+				}
+			}
+			else
+				break;
+		}
+	}
+	else
+	{
+	/*
+	 * send to user space
+	 */
+		struct compare_buffer* buffer = NULL;
+		struct data_node* ct = NULL;
+		if(HOST_TYPE_TARGET == conn_info->host_type)
+			buffer = buffer1;
+		else
+			buffer = buffer2;
+
+		while((should_break--) && (ct = compare_buffer_getblock(buffer)))
+		{
+			unsigned char* send_data = ct->data + (ct->length - ct->remain);
+			int send_size = 0;
+			send_size = netlink_send_data(conn_info, send_data, ct->remain);
+			compare_buffer_consume(send_size, buffer);
+		}
+		
+	}
 	spin_unlock(lock);
 	return 0;
 }

@@ -1,7 +1,5 @@
 #include "ovsptd_nlmgr.h"
 
-#include <stdio.h>
-
 static int nl_sockfd;
 
 int nl_init()
@@ -21,7 +19,7 @@ int nl_init()
 		return -1;
 
 	nl_sockfd = ret;
-	if(0 > recv_nl_message(&ret_type, &data))
+	if(0 > recv_nl_message(&ret_type, (void**)&data))
 	{
 		nl_sockfd = 0;
 		return -1;
@@ -39,10 +37,10 @@ int nl_uninit()
 	if(!nl_sockfd)
 		return 0;
 
-	if(0 > send_nl_message(ret, NLMSG_DAEMON_UNREG, NULL, 0))
+	if(0 > send_nl_message(nl_sockfd, NLMSG_DAEMON_UNREG, NULL, 0))
 		return -1;
 
-	if(0 > recv_nl_message(&ret_type, &data))
+	if(0 > recv_nl_message(&ret_type, (void**)&data))
 		return -1;
 
 	nl_sockfd = 0;
@@ -117,38 +115,24 @@ int send_nl_message(int fd, int type, void* data, size_t length)
     return sendmsg(fd, &msg, 0);
 }
 
-int recv_nl_message(UINT16* type, char** data)
+int recv_nl_message(UINT16* type, void** data)
 {
-	char buf[NL_MAXPAYLOAD];
+	char buf[NL_MAXPAYLOAD + NLMSG_HDRLEN];
 	int len;
+	struct iovec iov = { buf, sizeof(buf) };
+	struct sockaddr_nl sa;
+	struct msghdr msg = { &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+	struct nlmsghdr *nh;
 
 	if(0 == nl_sockfd)
 		return -1;
 
-	struct iovec iov = { buf, sizeof(buf) };
-	struct sockaddr_nl sa;
-	struct msghdr msg = { &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };;
-	struct nlmsghdr *nh;
-
-//	msg
 	len = recvmsg(nl_sockfd, &msg, 0);
 	if(len < 0)
-	{
-		printf("receive mesg errorx\n");
 		return -1;
-	}
-//	for (nh = (struct nlmsghdr *) buf; NLMSG_OK (nh, len); nh = NLMSG_NEXT (nh, len))
-//	{
-//		/* The end of multipart message. */
-//		if (nh->nlmsg_type == NLMSG_DONE)
-//			return;
 
-//		if (nh->nlmsg_type == NLMSG_ERROR)
-//		/* Do some error handling. */
-
-//		/* Continue with parsing payload. */
-//	}
 	nh = (struct nlmsghdr *) buf;
-	printf("receive mesg type: %x\n", nh->nlmsg_type);
-	return 0;
+	*type = nh->nlmsg_type;
+	*data = NLMSG_DATA(nh);
+	return nh->nlmsg_len - NLMSG_HDRLEN;
 }

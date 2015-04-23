@@ -197,7 +197,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP, .host_type = HOST_TYPE_MIRROR};
 
         if(data_size)
         {
@@ -227,8 +227,9 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
-        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_MIRROR};
         u32 this_tsval = get_tsval(skb);
+
 		PRINT_DEBUG("[%s] input port: %hu\n", __func__, ovs_get_port_no(arg));
 		/*
 		 * if connection hasn't setup we ignore all "normal packet"
@@ -464,7 +465,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         struct list_head* packet_buf = & ( this_udp_info->buffers.packet_buffer );
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
-        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP,};
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP, .host_type = HOST_TYPE_TARGET};
 
         if(this_udp_info->unlock == 0)
             pkt_buffer_barrier_add(packet_buf);
@@ -492,7 +493,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
-        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP,};
+        struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_TARGET};
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
 ///			printk("[%s] skb->len: %d, skb->data_len: %d\n", __func__, skb->len, skb->data_len);

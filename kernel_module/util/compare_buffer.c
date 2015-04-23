@@ -1,4 +1,5 @@
 #include "compare_buffer.h"
+#include "../kernel_common.h"
 
 int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 {
@@ -41,12 +42,16 @@ struct data_node* compare_buffer_getblock(struct compare_buffer* buffer)
 	struct data_node* ret = NULL;
 
 	if(list_empty(&(buffer->buffer_head)))
+	{
+		PRINT_DEBUG("[%s] list_empty\n", __func__);
 		return NULL;
-
+	}
 	spin_lock(&(buffer->compare_lock));
 	if(NULL == buffer->compare_head)
+	{
+		PRINT_DEBUG("[%s] compare_head = NULL\n", __func__);
         buffer->compare_head = list_entry(buffer->buffer_head.next, struct buffer_node, list);
-
+	}
 	if(buffer->compare_head && buffer->compare_head->payload.remain > 0)
 		ret = &(buffer->compare_head->payload);
     else
