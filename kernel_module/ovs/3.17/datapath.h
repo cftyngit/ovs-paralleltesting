@@ -149,7 +149,7 @@ int lockdep_ovsl_is_held(void);
 	rcu_dereference_protected(p, lockdep_ovsl_is_held())
 #define rcu_dereference_ovsl(p)					\
 	rcu_dereference_check(p, lockdep_ovsl_is_held())
-
+/*
 static inline struct net *ovs_dp_get_net(struct datapath *dp)
 {
 	return read_pnet(&dp->net);
@@ -179,7 +179,7 @@ static inline struct vport *ovs_vport_ovsl(const struct datapath *dp, int port_n
 	ASSERT_OVSL();
 	return ovs_lookup_vport(dp, port_no);
 }
-
+*/
 extern struct notifier_block ovs_dp_device_notifier;
 extern struct genl_family dp_vport_genl_family;
 
