@@ -1,7 +1,34 @@
 #include "tcp.h"
 
 extern struct host_conn_info_set conn_info_set;
-
+struct tcp_flags
+{
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u16	res1:4,
+		doff:4,
+		fin:1,
+		syn:1,
+		rst:1,
+		psh:1,
+		ack:1,
+		urg:1,
+		ece:1,
+		cwr:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	__u16	doff:4,
+		res1:4,
+		cwr:1,
+		ece:1,
+		urg:1,
+		ack:1,
+		psh:1,
+		rst:1,
+		syn:1,
+		fin:1;
+#else
+#error	"Adjust your <asm/byteorder.h> defines"
+#endif
+};
 int modify_tcp_header( struct sk_buff* skb_mod, union my_ip_type ip, u16 client_port )
 {
     struct tcphdr* tcp_header = tcp_hdr ( skb_mod );
@@ -349,60 +376,67 @@ struct sk_buff* build_ack_sk_buff(struct sk_buff* skb, u32 seq_ack)
 
 void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info)
 {
-    const struct tcphdr* tcp_header = tcp_hdr(skb_mod);
-    int length = (tcp_header->doff * 4) - sizeof(struct tcphdr);
-    const unsigned char* ptr = (const unsigned char *)(tcp_header + 1);
+	struct tcphdr* tcp_header = tcp_hdr(skb_mod);
+	int length = (tcp_header->doff * 4) - sizeof(struct tcphdr);
+	unsigned char* ptr = (unsigned char *)(tcp_header + 1);
 
-    while (length > 0)
-    {
-        int opcode = *ptr++;
-        int opsize;
+	while (length > 0)
+	{
+		int opcode = *ptr++;
+		int opsize;
 
-        switch (opcode)
-        {
-        case TCPOPT_EOL:
-            return;
-        case TCPOPT_NOP:        /* Ref: RFC 793 section 3.1 */
-            length--;
-            continue;
-        default:
-            opsize = *ptr++;
-            if (opsize < 2) /* "silly options" */
-                return;
-            if (opsize > length)
-                return; /* don't parse partial options */
-            switch (opcode) 
-            {
-            case TCPOPT_MSS:
-                break;
-            case TCPOPT_WINDOW:
-                break;
-            case TCPOPT_TIMESTAMP:
-                if(opsize == TCPOLEN_TIMESTAMP)
-                {
-                    u32 pkt_tsval = get_unaligned_be32(ptr + 0);
-                    if(tcp_info->tsval_last_send > pkt_tsval)
-                        put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+4);
-
-                    put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
-                }
-                break;
-            case TCPOPT_SACK_PERM:
-                if (opsize == TCPOLEN_SACK_PERM)
-                {
-                    u16 cancle_sack = 0x01 + (0x01<<8);
-                    put_unaligned_be16(cancle_sack, (void*)ptr-2);
-                }
-                break;
-            case TCPOPT_SACK:
-                break;
-            case TCPOPT_EXP:
-                break;
-            }
-            ptr += opsize-2;
-            length -= opsize;
-        }
-    }
+		switch (opcode)
+		{
+		case TCPOPT_EOL:
+			return;
+		case TCPOPT_NOP:        /* Ref: RFC 793 section 3.1 */
+			length--;
+			continue;
+		default:
+			opsize = *ptr++;
+			if (opsize < 2) /* "silly options" */
+				return;
+			if (opsize > length)
+				return; /* don't parse partial options */
+			switch (opcode)
+			{
+			case TCPOPT_MSS:
+				break;
+			case TCPOPT_WINDOW:
+				break;
+			case TCPOPT_TIMESTAMP:
+				if(opsize == TCPOLEN_TIMESTAMP)
+				{
+					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
+					if(tcp_info->tsval_last_send > pkt_tsval)
+					{
+						inet_proto_csum_replace4(&tcp_header->check, skb_mod, *(ptr+4), tcp_info->tsval_last_send, 0);
+						skb_clear_hash(skb_mod);
+						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+4);
+					}
+					inet_proto_csum_replace4(&tcp_header->check, skb_mod, *(ptr+4), tcp_info->tsval_current, 0);
+					skb_clear_hash(skb_mod);
+					put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
+				}
+				break;
+			case TCPOPT_SACK_PERM:
+				if (opsize == TCPOLEN_SACK_PERM)
+				{
+					u16 cancle_sack = 0x01 + (0x01<<8);
+					inet_proto_csum_replace2(&tcp_header->check, skb_mod, *(ptr-2), cancle_sack, 0);
+					skb_clear_hash(skb_mod);
+					put_unaligned_be16(cancle_sack, (void*)ptr-2);
+				}
+				break;
+			case TCPOPT_SACK:
+				break;
+			case TCPOPT_EXP:
+				break;
+			}
+			ptr += opsize-2;
+			length -= opsize;
+		}
+	}
 }
 
 u32 __get_timestamp(const struct sk_buff* skb, int off)
@@ -678,7 +712,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
         if( data_size > this_tcp_info->window_current)
         {
-			PRINT_DEBUG("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
+			PRINT_DEBUG("[%s] data_size: %zu, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
             kfree_skb(skb_mod);
             break;
         }
@@ -728,33 +762,63 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
              * If skb_mod is SYN-ACK, aka, mirror client case
              * check if we has send fake SYN-ACK
              */
-            if(tcp_header->syn && this_tcp_info->seq_rmhost_fake)
-            {
-                set_tcp_state ( skb_mod, NULL ); // setup tcp state to TCP_STATE_ESTABLISHED
-                this_tcp_info->seq_rmhost = ntohl(tcp_header->seq);
-                seq_rmhost = this_tcp_info->seq_rmhost;
-                /*
-                 * make the SYN-ACK from rmhost to an ack packet
-                 * to open received window
-                 */
-                tcp_header->syn = 0;
-                tcp_header->seq = htonl(ntohl(tcp_header->seq) + 1);
-            }
-            /*
-             * setup ack seql
-             */
-            if ( seq_mirror > seq_server )
-                tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server ) );
-            else
-                tcp_header->ack_seq = htonl ( ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror ) );
-            /*
-             * setup seq number
-             */
-            if ( seq_rmhost_fake > seq_rmhost )
-                tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) + ( seq_rmhost_fake - seq_rmhost ) );
-            else if ( seq_rmhost_fake < seq_rmhost )
-                tcp_header->seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
-        }
+			if(tcp_header->syn && this_tcp_info->seq_rmhost_fake)
+			{
+				struct tcp_flags* old_flags = (struct tcp_flags*)(&(tcp_header->ack_seq) + 1);
+				struct tcp_flags new_flags;
+				u32 new_seq = htonl(ntohl(tcp_header->seq) + 1);
+				memmove(&new_flags, old_flags, sizeof(new_flags));
+				set_tcp_state ( skb_mod, NULL ); // setup tcp state to TCP_STATE_ESTABLISHED
+				this_tcp_info->seq_rmhost = ntohl(tcp_header->seq);
+				seq_rmhost = this_tcp_info->seq_rmhost;
+				/*
+				 * make the SYN-ACK from rmhost to an ack packet
+				 * to open received window
+				 */
+				new_flags.syn = 0;
+				inet_proto_csum_replace2(&tcp_header->check, skb_mod, *(u16*)old_flags, *(u16*)(&new_flags), 0);
+				skb_clear_hash(skb_mod);
+				memmove(old_flags, &new_flags, sizeof(old_flags));
+				//tcp_header->syn = 0;
+				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->seq, new_seq, 0);
+				skb_clear_hash(skb_mod);
+				tcp_header->seq = new_seq;
+			}
+			/*
+			 * setup ack seql
+			 */
+			if ( seq_mirror > seq_server )
+			{
+				u32 new_seq = htonl ( ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server ) );
+				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->ack_seq, new_seq, 0);
+				skb_clear_hash(skb_mod);
+				tcp_header->ack_seq = new_seq;
+			}
+			else
+			{
+				u32 new_seq = htonl ( ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror ) );
+				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->ack_seq, new_seq, 0);
+				skb_clear_hash(skb_mod);
+				tcp_header->ack_seq = new_seq;
+			}
+			/*
+			 * setup seq number
+			 */
+			if ( seq_rmhost_fake > seq_rmhost )
+			{
+				u32 new_seq = htonl ( ntohl ( tcp_header->seq ) + ( seq_rmhost_fake - seq_rmhost ) );
+				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->seq, new_seq, 0);
+				skb_clear_hash(skb_mod);
+				tcp_header->seq = new_seq;
+			}
+			else if ( seq_rmhost_fake < seq_rmhost )
+			{
+				u32 new_seq = htonl ( ntohl ( tcp_header->seq ) - ( seq_rmhost - seq_rmhost_fake ) );
+				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->seq, new_seq, 0);
+				skb_clear_hash(skb_mod);
+				tcp_header->seq = new_seq;
+			}
+		}
         this_tcp_info->window_current -= data_size;
         /*
         if(this_tcp_info->mirror_port)
@@ -769,7 +833,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			/*
 			 * modify from set_tp_port in openvswich/action.c
 			 */
-            inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 1);
+            inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 0);
             tcp_header->dest = htons(this_tcp_info->mirror_port);
 			skb_clear_hash(skb_mod);
         }
