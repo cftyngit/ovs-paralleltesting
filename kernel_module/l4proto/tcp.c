@@ -378,7 +378,13 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 {
 	struct tcphdr* tcp_header = tcp_hdr(skb_mod);
 	int length = (tcp_header->doff * 4) - sizeof(struct tcphdr);
-	unsigned char* ptr = (unsigned char *)(tcp_header + 1);
+	u32* new_options = kmalloc(length, GFP_KERNEL);
+	u32* old_options = (u32 *)(tcp_header + 1);
+	int opt_l = length / sizeof(u32);
+	int i = 0;
+	unsigned char* ptr = (unsigned char*)new_options;
+
+	memmove(new_options, (unsigned char *)(tcp_header + 1), length);
 
 	while (length > 0)
 	{
@@ -409,13 +415,8 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 				{
 					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
 					if(tcp_info->tsval_last_send > pkt_tsval)
-					{
-						inet_proto_csum_replace4(&tcp_header->check, skb_mod, *(ptr+4), tcp_info->tsval_last_send, 0);
-						skb_clear_hash(skb_mod);
 						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+4);
-					}
-					inet_proto_csum_replace4(&tcp_header->check, skb_mod, *(ptr+4), tcp_info->tsval_current, 0);
-					skb_clear_hash(skb_mod);
+
 					put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
 				}
 				break;
@@ -423,8 +424,6 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 				if (opsize == TCPOLEN_SACK_PERM)
 				{
 					u16 cancle_sack = 0x01 + (0x01<<8);
-					inet_proto_csum_replace2(&tcp_header->check, skb_mod, *(ptr-2), cancle_sack, 0);
-					skb_clear_hash(skb_mod);
 					put_unaligned_be16(cancle_sack, (void*)ptr-2);
 				}
 				break;
@@ -436,6 +435,12 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 			ptr += opsize-2;
 			length -= opsize;
 		}
+	}
+	for(i = 0; i < opt_l; ++i)
+	{
+		inet_proto_csum_replace4(&tcp_header->check, skb_mod, old_options[i], new_options[i], 0);
+		old_options[i] = new_options[i];
+		skb_clear_hash(skb_mod);
 	}
 }
 
@@ -754,14 +759,14 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         /*
          * SYN packet doesn't need to chenge seq number
          */
-        if ( !(tcp_header->syn && !tcp_header->ack) )
-        {
-            u32 seq_rmhost = this_tcp_info->seq_rmhost;
-            u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
-            /*
-             * If skb_mod is SYN-ACK, aka, mirror client case
-             * check if we has send fake SYN-ACK
-             */
+		if ( !(tcp_header->syn && !tcp_header->ack) )
+		{
+			u32 seq_rmhost = this_tcp_info->seq_rmhost;
+			u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+			/*
+			 * If skb_mod is SYN-ACK, aka, mirror client case
+			 * check if we has send fake SYN-ACK
+			 */
 			if(tcp_header->syn && this_tcp_info->seq_rmhost_fake)
 			{
 				struct tcp_flags* old_flags = (struct tcp_flags*)(&(tcp_header->ack_seq) + 1);
@@ -778,8 +783,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				new_flags.syn = 0;
 				inet_proto_csum_replace2(&tcp_header->check, skb_mod, *(u16*)old_flags, *(u16*)(&new_flags), 0);
 				skb_clear_hash(skb_mod);
-				memmove(old_flags, &new_flags, sizeof(old_flags));
-				//tcp_header->syn = 0;
+				memmove(old_flags, &new_flags, sizeof(struct tcp_flags));
 				inet_proto_csum_replace4(&tcp_header->check, skb_mod, tcp_header->seq, new_seq, 0);
 				skb_clear_hash(skb_mod);
 				tcp_header->seq = new_seq;
@@ -826,24 +830,17 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         */
         if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
             this_tcp_info->tsval_last_send = get_tsval(skb_mod);
-        setup_options(skb_mod, this_tcp_info);
+		setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
-        if(this_tcp_info->mirror_port)
-        {
+		if(this_tcp_info->mirror_port)
+		{
 			/*
 			 * modify from set_tp_port in openvswich/action.c
 			 */
-            inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 0);
-            tcp_header->dest = htons(this_tcp_info->mirror_port);
+			inet_proto_csum_replace2(&(tcp_header->check), skb_mod, tcp_header->dest, htons(this_tcp_info->mirror_port), 0);
+			tcp_header->dest = htons(this_tcp_info->mirror_port);
 			skb_clear_hash(skb_mod);
-        }
-		/*if(data_size < 1460)
-		{
-			tcp_header->check = 0;
-			skb_mod->csum = csum_partial((unsigned char *)tcp_header, ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), 0);
-			tcp_header->check = csum_tcpudp_magic(ip_header->saddr, ip_header->daddr,
-                                              ntohs(ip_header->tot_len) - ip_hdrlen(skb_mod), ip_header->protocol, skb_mod->csum);
-		}*/
+		}
         this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;

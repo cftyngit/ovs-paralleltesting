@@ -371,8 +371,12 @@ retransmission:
         set_tcp_state ( NULL, skb );
 //from_mirror_respond_mirror:
         pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
-        if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
-            ack_this_packet(skb);
+		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && ntohl(tcp_header->seq) > this_tcp_info->ackseq_last_playback)
+		{
+			PRINT_DEBUG("[%s] ack this packet: state: state: %d, data_size: %zu, last_play: %u\n", __func__, this_tcp_info->state, data_size, this_tcp_info->ackseq_last_playback);
+			PRINT_DEBUG("[%s] ack this packet: %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
+			ack_this_packet(skb);
+		}
     }
     return 0;
 }
