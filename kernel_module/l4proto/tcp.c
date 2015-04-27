@@ -180,7 +180,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
     return 0;
 }
 
-int ack_this_packet(const struct sk_buff* skb)
+int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_info)
 {
     struct socket *sock;
     struct net *net = NULL;
@@ -197,10 +197,12 @@ int ack_this_packet(const struct sk_buff* skb)
     __be32 sip = sk_ip_header->daddr;
     //u8 *pdata = NULL;
     u32 skb_len;
+	u8 *pdata = NULL;
 
     sock_create_kern(PF_INET, SOCK_STREAM, 0, &sock);
     net = sock_net((const struct sock *) sock->sk);
-    skb_len = sizeof(struct iphdr) + sizeof(struct tcphdr) + LL_RESERVED_SPACE(netdev);
+//	skb_len = sizeof(struct iphdr) + sizeof(struct tcphdr) + LL_RESERVED_SPACE(netdev);
+	skb_len = sizeof(struct iphdr) + sizeof(struct tcphdr) + (((TCPOLEN_TIMESTAMP>>2)+1)<<2) + LL_RESERVED_SPACE(netdev);
     /* dev_alloc_skb是一个缓冲区分配函数,主要被设备驱动使用.
      * 这是一个alloc_skb的包装函数, 它会在请求分配的大小上增加
      * 16 Bytes的空间以优化缓冲区的读写效率.*/
@@ -229,11 +231,12 @@ int ack_this_packet(const struct sk_buff* skb)
     /* construct tcp header in skb */
     tcp_header = tcp_hdr(skb_new);
     memset (tcp_header, 0, sizeof(struct tcphdr));
-    tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size );
+    tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size + (sk_tcp_header->syn || sk_tcp_header->fin ? 1 : 0));
     tcp_header->seq = sk_tcp_header->ack_seq;
     tcp_header->source = sk_tcp_header->dest;
     tcp_header->dest = sk_tcp_header->source;
-    tcp_header->doff = (u32)( sizeof(struct tcphdr) ) >> 2;
+//	tcp_header->doff = (u32)( sizeof(struct tcphdr) ) >> 2;
+	tcp_header->doff = (u32)( sizeof(struct tcphdr) + (((TCPOLEN_TIMESTAMP>>2)+1)<<2) ) >> 2;
     tcp_header->ack = 1;
     tcp_header->window = sk_tcp_header->window;
     /* construct ip header in skb */
@@ -247,11 +250,26 @@ int ack_this_packet(const struct sk_buff* skb)
     ip_header->daddr = dip;
     ip_header->saddr = sip;
     ip_header->ttl = 0x40;
-    ip_header->tot_len = htons(skb_new->len);
+    ip_header->tot_len = htons(skb_new->len + (((TCPOLEN_TIMESTAMP>>2)+1)<<2));
     ip_header->check = 0;
     /* caculate checksum */
     ip_send_check(ip_header);
     skb_new->csum = skb_checksum(skb_new, ip_header->ihl*4, skb_new->len-ip_header->ihl*4, 0);
+	    /*
+     * setup tcp timestamp
+     */
+    pdata = skb_put(skb_new, ((TCPOLEN_TIMESTAMP>>2)+1)<<2);
+    if (pdata && tcp_info->tsval_current) 
+    {
+        const char timestamp[] = {TCPOPT_TIMESTAMP, TCPOLEN_TIMESTAMP};
+        memset(pdata, 0x01, (((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP);
+        pdata+=(((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP;
+        memmove(pdata, timestamp, sizeof(timestamp));
+        pdata+=sizeof(timestamp);
+        put_unaligned_be32(tcp_info->tsval_last_send, pdata);
+        pdata+=4;
+        put_unaligned_be32(tcp_info->tsval_current, pdata);
+    }
     tcp_header->check = 0;
     tcp_header->check = tcp_v4_check(skb_new->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_new->csum);
     /* construct ethernet header in skb */
@@ -260,6 +278,7 @@ int ack_this_packet(const struct sk_buff* skb)
     memcpy(eth_header->h_dest, sk_eth_header->h_source, ETH_ALEN);
     memcpy(eth_header->h_source, sk_eth_header->h_dest, ETH_ALEN);
     eth_header->h_proto = htons(ETH_P_IP);
+	setup_options(skb_new, tcp_info);
     /* send packet */
     if (dev_queue_xmit(skb_new) < 0)
     {
@@ -415,7 +434,7 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 				{
 					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
 					if(tcp_info->tsval_last_send > pkt_tsval)
-						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+4);
+						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+0);
 
 					put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
 				}

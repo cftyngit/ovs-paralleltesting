@@ -17,7 +17,7 @@ void init_packet_dispatcher()
     init_tcp_state();
 }
 
-static const unsigned char fake_mac[ETH_ALEN] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+static const unsigned char fake_mac[ETH_ALEN] = {0x00, 0x12, 0x34, 0x56, 0x78, 0x90};
 
 void build_arphdr(struct sk_buff *skb, unsigned char smac[ETH_ALEN], u32* saddr, unsigned char dmac[ETH_ALEN], u32* daddr)
 {
@@ -94,10 +94,10 @@ int pd_check_action (struct sk_buff *skb, struct other_args* arg)
 
     if ( ETH_P_IP != eth_type )
 	{
-		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN))
+		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN) && arp_hdr(skb)->ar_op == ARPOP_REQUEST)
 		{
 			response_arp(skb, arg);
-			return PT_ACTION_CONTINUE;
+			return PT_ACTION_DROP;
 		}
 		return PT_ACTION_CONTINUE;
 	}
@@ -132,16 +132,10 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
     struct list_head* packet_buf = NULL;
     struct buf_data* bd = NULL;
 
-//    PRINT_DEBUG("into function: %s\n", __func__);
-
-    if ( IPPROTO_UDP == proto )
-        packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
-    else
-        packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
-
     switch ( proto )
     {
     case IPPROTO_UDP:
+		packet_buf = & ( UDP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
         bd = pkt_buffer_get_data ( packet_buf );
         if( NULL == bd )
         {
@@ -153,28 +147,41 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
             else
                 return 0;
         }
-        while ( NULL != bd )
-        {
-            struct udphdr* udp_header;
-            skb_mod = bd->skb;
-            udp_header = udp_hdr ( skb_mod );
-            pd_modify_ip_mac ( skb_mod );
-            if(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port)
-                udp_header->dest = htons(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port);
-
-            //send_skbmod ( bd->p, skb_mod );
+		while ( NULL != bd )
+		{
+			struct udphdr* udp_header;
+			skb_mod = bd->skb;
+			udp_header = udp_hdr ( skb_mod );
+			pd_modify_ip_mac ( skb_mod );
+			if(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port)
+			{
+				u16 new_port = htons(UDP_CONN_INFO(&conn_info_set, ip, client_port)->mirror_port);
+				u16* old_port = &udp_header->dest;
+				if (udp_header->check && skb_mod->ip_summed != CHECKSUM_PARTIAL)
+				{
+					inet_proto_csum_replace2(&udp_header->check, skb_mod, *old_port, new_port, 0);
+					*old_port = new_port;
+					skb_clear_hash(skb_mod);
+					if (!udp_header->check)
+						udp_header->check = CSUM_MANGLED_0;
+				}
+				else
+				{
+					*old_port = new_port;
+					skb_clear_hash(skb_mod);
+				}
+			}
 			send_skbmod(skb_mod, bd->p);
-            kfree(bd->p);
-            kfree(bd);
-            bd = pkt_buffer_get_data ( packet_buf );
-        }
+			kfree(bd->p);
+			kfree(bd);
+			bd = pkt_buffer_get_data ( packet_buf );
+		}
         //pkt_buffer_barrier_remove ( packet_buf );
         break;
-    case IPPROTO_TCP:
-    {
-        tcp_playback_packet( ip, client_port, cause);
-    }
-        break;
+	case IPPROTO_TCP:
+//		packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
+		tcp_playback_packet( ip, client_port, cause);
+		break;
     default:
         //kfree_skb ( skb_mod );
         return -1;
@@ -371,11 +378,11 @@ retransmission:
         set_tcp_state ( NULL, skb );
 //from_mirror_respond_mirror:
         pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
-		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && ntohl(tcp_header->seq) > this_tcp_info->ackseq_last_playback)
+		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && !tcp_header->syn && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
 		{
 			PRINT_DEBUG("[%s] ack this packet: state: state: %d, data_size: %zu, last_play: %u\n", __func__, this_tcp_info->state, data_size, this_tcp_info->ackseq_last_playback);
 			PRINT_DEBUG("[%s] ack this packet: %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
-			ack_this_packet(skb);
+			ack_this_packet(skb, this_tcp_info);
 		}
     }
     return 0;
