@@ -656,6 +656,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     struct tcphdr* tcp_header;
     unsigned char should_break = cause == CAUSE_BY_RETRAN ? 1 : 0;
     int state_reset = 0;
+	int data_packet_counter = 0;
     PRINT_DEBUG("into function: %s\n", __func__);
     if(NULL == this_tcp_info || NULL == packet_buf)
     {
@@ -867,13 +868,16 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		PRINT_DEBUG("[%s] send_skbmod\n", __func__);
         //send_skbmod ( bd->p, skb_mod );
 		send_skbmod(skb_mod, bd->p);
-
+		
         if(!should_break)
             state_reset = set_tcp_state ( bd->skb, NULL );
 
         if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
             break;
-    }while ( 0 == should_break && 0 == state_reset );
+
+		if(data_size && ++data_packet_counter > 6)
+			break;
+    }while ( 0 == should_break && 0 == state_reset && this_tcp_info->dup_ack_counter <= 1 );
     return 0;
 }
 

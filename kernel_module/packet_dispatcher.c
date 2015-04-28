@@ -322,7 +322,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                     else
                     {
                         ++this_tcp_info->dup_ack_counter;
-                        if(0 && this_tcp_info->dup_ack_counter >= 3)
+                        if(1 && this_tcp_info->dup_ack_counter >= 3)
                         {//add re transmission func here
                             playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
                             this_tcp_info->window_current = respond_window;
