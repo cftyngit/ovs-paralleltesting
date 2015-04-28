@@ -313,7 +313,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                 if(this_ack_seq < seq_edge + data_size_edge)
                 {
                     struct list_head* playback_ptr = NULL;
-                    PRINT_DEBUG("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
+//					PRINT_DEBUG("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
                     if(this_ack_seq != this_tcp_info->seq_dup_ack)
                     {
                         this_tcp_info->seq_dup_ack = this_ack_seq;
@@ -322,7 +322,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                     else
                     {
                         ++this_tcp_info->dup_ack_counter;
-                        if(1 && this_tcp_info->dup_ack_counter >= 3)
+                        if(1 && this_tcp_info->dup_ack_counter == 3)
                         {//add re transmission func here
                             playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
                             this_tcp_info->window_current = respond_window;
@@ -330,6 +330,13 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                             PRINT_DEBUG("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
                             goto retransmission;
                         }
+						if(this_tcp_info->dup_ack_counter > 3)
+						{
+							if(this_tcp_info->dup_ack_counter == 15)
+								this_tcp_info->dup_ack_counter = 0;
+
+							return 0;
+						}
                     }
                     if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
                     {

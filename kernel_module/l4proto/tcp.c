@@ -657,7 +657,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     unsigned char should_break = cause == CAUSE_BY_RETRAN ? 1 : 0;
     int state_reset = 0;
 	int data_packet_counter = 0;
-    PRINT_DEBUG("into function: %s\n", __func__);
     if(NULL == this_tcp_info || NULL == packet_buf)
     {
         PRINT_ERROR("[%s] get this_tcp_info fail\n", __func__);
@@ -865,7 +864,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
 
-		PRINT_DEBUG("[%s] send_skbmod\n", __func__);
+		PRINT_DEBUG("[%s] send_skbmod: %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
         //send_skbmod ( bd->p, skb_mod );
 		send_skbmod(skb_mod, bd->p);
 		
@@ -969,8 +968,10 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
 ///        printk("[%s] %p check seq: %u, target_seq: %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
         if(ntohl(tcp_header->seq) <= real_target_seq && ntohl(tcp_header->seq) + data_size > real_target_seq)
+		{
+			PRINT_DEBUG("[%s] target_seq: %u, real: %u, get: %zu\n", __func__, seq_target, real_target_seq, ntohl(tcp_header->seq) + data_size);
             return ret;
-
+		}
         ret = iterator;
     }
     return NULL;
