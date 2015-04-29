@@ -397,8 +397,7 @@ retransmission:
 
 int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 {
-    struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
-    struct iphdr* ip_header = ip_hdr ( skb_mod );
+    struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->saddr,};
     struct list_head* packet_buf = NULL;
     struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
@@ -409,17 +408,18 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 
     memcpy(this_args, arg, sizeof_other_args);
     bd->p = this_args;
-    bd->skb = skb_mod;
     bd->retrans_times = 0;
     init_timer(&(bd->timer));
 //	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
     if ( IPPROTO_UDP == ip_header->protocol )
     {
+		struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
         struct udphdr* udp_header = udp_hdr ( skb_mod );
         u16 client_port = ntohs ( udp_header->source );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
         packet_buf = & ( this_udp_info->buffers.packet_buffer );
         bd->conn_info = this_udp_info;
+		bd->skb = skb_mod;
         pbn->seq_num = this_udp_info->current_seq_rmhost;
         pbn->seq_num_next = pbn->seq_num + 1;
         pbn->bd = bd;
@@ -432,6 +432,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 
     if ( IPPROTO_TCP == ip_header->protocol )
     {
+		struct sk_buff* skb_mod = skb_clone ( skb, GFP_ATOMIC );
         struct tcphdr* tcp_header = tcp_hdr ( skb_mod );
         unsigned short client_port = ntohs ( tcp_header->source );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
@@ -445,6 +446,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
         }
         packet_buf = & ( this_tcp_info->buffers.packet_buffer );
         bd->conn_info = this_tcp_info;
+		bd->skb = skb_mod;
         pbn->seq_num = ntohl(tcp_header->seq);
         pbn->seq_num_next = (pbn->seq_num + data_size) % U32_MAX;
         pbn->opt_key = get_tsval(skb_mod);
