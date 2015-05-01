@@ -752,7 +752,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             info->ip = ip;
             info->list = this_tcp_info->playback_ptr;
             info->tcp_info = this_tcp_info;
-            printk("[%s] retrans info: %p\n", __func__, info);
+            PRINT_DEBUG("[%s] retrans info: %p\n", __func__, info);
 			spin_lock(&(this_tcp_info->retranstimer_lock));
             if(timer_pending(&(bd->timer)))
             {
@@ -761,7 +761,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             }
             setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
             //mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
-            printk("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
+            PRINT_DEBUG("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
             mod_timer(&(bd->timer), jiffies + (HZ << 1));
 			spin_unlock(&(this_tcp_info->retranstimer_lock));
         }

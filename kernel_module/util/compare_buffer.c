@@ -103,3 +103,23 @@ exit:
 	spin_unlock(&(buffer->compare_lock));
 	return ret;
 }
+
+int compare_buffer_cleanup(struct compare_buffer* buffer)
+{
+	struct list_head *iterator = NULL, *tmp = NULL, *head = &(buffer->buffer_head);
+	struct buffer_node *bn = NULL;
+	if(list_empty(head))
+		return 0;
+
+	list_for_each_safe(iterator, tmp, head)
+	{
+		if(iterator == NULL || iterator == LIST_POISON1 || iterator == LIST_POISON2)
+			continue;
+
+		list_del(iterator);
+		bn = list_entry(iterator, struct buffer_node, list);
+		kfree(bn->payload.data);
+		kfree(bn);
+	}
+	return 0;
+}

@@ -126,3 +126,62 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
     conn_info_set->count--;
     return 0;
 }
+
+static void tcp_stat_cleanup(struct radix_tree_root* tcp_info_set)
+{
+	struct radix_tree_iter iter;
+	void **slot = NULL;
+
+	radix_tree_for_each_slot(slot, tcp_info_set, &iter, 0)
+	{
+		struct tcp_conn_info* tci = radix_tree_deref_slot(slot);
+		if(tci != NULL)
+		{
+			PRINT_DEBUG("[%s] information about tcp: %lu\n", __func__, iter.index);
+			pkt_buffer_cleanup(&(tci->buffers.packet_buffer));
+			compare_buffer_cleanup(&(tci->buffers.mirror_buffer));
+			compare_buffer_cleanup(&(tci->buffers.target_buffer));
+			radix_tree_delete(tcp_info_set, iter.index);
+			kfree(tci);
+		}
+	}
+}
+
+static void udp_stat_cleanup(struct radix_tree_root* udp_info_set)
+{
+	struct radix_tree_iter iter;
+	void **slot = NULL;
+
+	radix_tree_for_each_slot(slot, udp_info_set, &iter, 0)
+	{
+		struct udp_conn_info* uci = radix_tree_deref_slot(slot);
+		if(uci != NULL)
+		{
+			PRINT_DEBUG("[%s] information about udp: %lu\n", __func__, iter.index);
+			pkt_buffer_cleanup(&(uci->buffers.packet_buffer));
+			compare_buffer_cleanup(&(uci->buffers.mirror_buffer));
+			compare_buffer_cleanup(&(uci->buffers.target_buffer));
+			radix_tree_delete(udp_info_set, iter.index);
+			kfree(uci);
+		}
+	}
+}
+
+void connect_stat_cleanup(struct host_conn_info_set* conn_info_set)
+{
+	struct radix_tree_iter iter;
+	void **slot = NULL;
+	radix_tree_for_each_slot(slot, &conn_info_set->conn_info_set, &iter, 0)
+	{
+		struct host_conn_info *hci = radix_tree_deref_slot(slot);
+		if(hci != NULL)
+		{
+			PRINT_DEBUG("[%s] information about page: %lu\n", __func__, iter.index);
+			tcp_stat_cleanup(&hci->tcp_info_set);
+			udp_stat_cleanup(&hci->udp_info_set);
+			radix_tree_delete(&(conn_info_set->conn_info_set), iter.index);
+			kfree(hci);
+			conn_info_set->count--;
+		}
+	}
+}

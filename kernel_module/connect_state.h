@@ -108,6 +108,7 @@ struct host_conn_info_set
 
 void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 proto, u16 port);
 int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type ip, u16 port);
+void connect_stat_cleanup(struct host_conn_info_set* conn_info_set);
 
 #define tcp_state_get(conn_info_set, ip, port) ({\
     int ret; \
