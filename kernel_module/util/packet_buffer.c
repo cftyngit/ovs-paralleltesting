@@ -98,10 +98,12 @@ int pkt_buffer_cleanup(struct list_head* head)
         if(iterator == NULL || iterator == LIST_POISON1 || iterator == LIST_POISON2)
             continue;
 
-        list_del(iterator);
+        
         pbn = list_entry(iterator, struct pkt_buffer_node, list);
-        if(timer_pending(&(pbn->bd->timer)))
-            del_timer(&(pbn->bd->timer));
+//		if(timer_pending(&(pbn->bd->timer)))
+            del_timer_sync(&(pbn->bd->timer));
+			del_timer_sync(&(pbn->bd->timer));
+		list_del(iterator);
         kfree(pbn->bd->p);
         kfree_skb(pbn->bd->skb);
         kfree(pbn->bd);
@@ -112,13 +114,25 @@ int pkt_buffer_cleanup(struct list_head* head)
 
 struct buf_data* pkt_buffer_peek_data_from_ptr(struct list_head* head, struct list_head** ptr)
 {
-    struct list_head* this_ptr = *ptr;
-    if(this_ptr != NULL && this_ptr->next != head && this_ptr->next != LIST_POISON1 && this_ptr->next != LIST_POISON2
-        && list_entry(this_ptr->next, struct pkt_buffer_node, list)->barrier == 0)
-    {
-        *ptr = this_ptr->next;
-///        printk("[%s] return %p\n", __func__, this_ptr->next);
-        return list_entry(this_ptr->next, struct pkt_buffer_node, list)->bd;
-    }
-    return NULL;
+	struct pkt_buffer_node* pbn = NULL;
+	struct list_head* this_ptr = *ptr;
+
+	if(this_ptr == NULL || this_ptr == LIST_POISON1 || this_ptr == LIST_POISON2)
+		return NULL;
+
+	if(this_ptr->next == NULL || this_ptr->next == head || this_ptr->next == LIST_POISON1 || this_ptr->next == LIST_POISON2)
+		return NULL;
+
+	pbn = list_entry(this_ptr->next, struct pkt_buffer_node, list);
+	if(pbn && pbn->barrier == 0)
+	{
+		if(pbn && pbn->bd != NULL)
+		{
+//			struct buf_data* ret_bd = kmalloc(sizeof(struct buf_data), GFP_ATOMIC);
+//			memmove(ret_bd, pbn->bd, sizeof(struct buf_data));
+			*ptr = this_ptr->next;
+			return pbn->bd;
+		}
+	}
+	return NULL;
 }

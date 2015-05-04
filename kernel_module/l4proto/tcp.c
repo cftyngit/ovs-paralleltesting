@@ -397,7 +397,7 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 {
 	struct tcphdr* tcp_header = tcp_hdr(skb_mod);
 	int length = (tcp_header->doff * 4) - sizeof(struct tcphdr);
-	u32* new_options = kmalloc(length, GFP_KERNEL);
+	u32* new_options = kmalloc(length, GFP_ATOMIC);
 	u32* old_options = (u32 *)(tcp_header + 1);
 	int opt_l = length / sizeof(u32);
 	int i = 0;
@@ -682,13 +682,15 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			PRINT_DEBUG("[%s] line %d\n", __func__, __LINE__);
             break;
 		}
-///        printk("[%s] pkt_ptr: %p, wind_r_edge: %p\n", __func__, pkt_ptr_tmp, this_tcp_info->send_wnd_right_dege);
-        bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
+
+		bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
 		{
 			PRINT_DEBUG("[%s] NULL == bd\n", __func__);
             break;
 		}
+		if(cause == CAUSE_BY_RETRAN)
+			printk(KERN_EMERG "[%s] retrans: %p, ptr: %p\n", __func__, bd, this_tcp_info->playback_ptr);
         /*
          * peek new packet from packet buffer to see whether it's ack seq is newer
          * than the lastest packet from mirror
@@ -701,9 +703,10 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         else
             seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
 
-        if(seq_tmp > this_tcp_info->seq_next)
+        if(cause != CAUSE_BY_RETRAN && seq_tmp > this_tcp_info->seq_next)
         {
             struct sk_buff* tmp = NULL;
+			PRINT_DEBUG("[%s] seq_tmp: %u, seq_next: %u\n", __func__, seq_tmp, this_tcp_info->seq_next);
             if( TCP_STATE_ESTABLISHED == this_tcp_info->state && this_tcp_info->ackseq_last_from_target >= ntohl(tcp_header->seq))
             {
                 u32 target_ack_seq = 0;
@@ -726,6 +729,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             else
             {
 				PRINT_DEBUG("[%s] TCP_STATE_ESTABLISHED != this_tcp_info->state\n", __func__);
+				PRINT_DEBUG("[%s] ackseq_last_from_target: %u, tcp_header->seq: %u\n", __func__, this_tcp_info->ackseq_last_from_target, ntohl(tcp_header->seq));
                 kfree_skb(skb_mod);
                 break;
             }
@@ -744,28 +748,42 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
-/*
-        if(data_size || tcp_header->syn || tcp_header->fin)
-        {
-            struct retransmit_info* info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
-            info->client_port = client_port;
-            info->ip = ip;
-            info->list = this_tcp_info->playback_ptr;
-            info->tcp_info = this_tcp_info;
-            PRINT_DEBUG("[%s] retrans info: %p\n", __func__, info);
-			spin_lock(&(this_tcp_info->retranstimer_lock));
-            if(timer_pending(&(bd->timer)))
-            {
-                del_timer(&(bd->timer));
-				init_timer(&(bd->timer));
-            }
-            setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
-            //mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
-            PRINT_DEBUG("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
-            mod_timer(&(bd->timer), jiffies + (HZ << 1));
-			spin_unlock(&(this_tcp_info->retranstimer_lock));
-        }
-*/
+
+		if(data_size || tcp_header->syn || tcp_header->fin)
+		{
+			u32 seq_target = 0;
+			u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+			u32 seq_rmhost = this_tcp_info->seq_rmhost;
+			struct retransmit_info* info = NULL;
+
+			if ( seq_rmhost_fake > seq_rmhost )
+				seq_target = this_tcp_info->seq_last_ack - ( seq_rmhost_fake - seq_rmhost );
+			else
+				seq_target = this_tcp_info->seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
+			if(cause == CAUSE_BY_RETRAN)
+				printk(KERN_EMERG "[%s] retrans timer: %p, next_seq: %u, acked_seq: %u, ptr: %p\n", __func__, bd, ntohl(tcp_header->seq), seq_target, this_tcp_info->playback_ptr);
+			if(ntohl(tcp_header->seq) + data_size > seq_target)
+			{
+				info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
+				info->client_port = client_port;
+				info->ip = ip;
+				info->list = this_tcp_info->playback_ptr;
+				info->tcp_info = this_tcp_info;
+				PRINT_DEBUG("[%s] retrans info: %p\n", __func__, info);
+				spin_lock(&(this_tcp_info->retranstimer_lock));
+				if(timer_pending(&(bd->timer)))
+				{
+					del_timer_sync(&(bd->timer));
+					init_timer(&(bd->timer));
+				}
+				setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
+				//mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
+				PRINT_DEBUG("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
+				mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
+				spin_unlock(&(this_tcp_info->retranstimer_lock));
+			}
+		}
+
         setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
         /*
          * setup send_window's right edge
@@ -899,17 +917,29 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
 
     list_for_each_safe(iterator, tmp, head)
     {
+		struct tcphdr* tcp_header = NULL;
+		struct iphdr* ip_header = NULL;
+		u16 data_size = 0;
         pbn = list_entry(iterator, struct pkt_buffer_node, list);
-        if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) < seq_target )
+		ip_header = ip_hdr ( pbn->bd->skb );
+		tcp_header = tcp_hdr ( pbn->bd->skb );
+		data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
+		if(tcp_header->syn || tcp_header->fin)
+			data_size += 1;
+
+        if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size <= seq_target )
         {
             if( iterator == this_tcp_info->playback_ptr )
                 break;
 
 ///            printk("[%s] del pkt %p %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
             //printk("[%s] del pkt \n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
-            list_del(iterator);
-            if(timer_pending(&(pbn->bd->timer)))
-                del_timer(&(pbn->bd->timer));
+            
+//			if(timer_pending(&(pbn->bd->timer)))
+			printk(KERN_EMERG "[%s] del pkt %p, seq_target: %u\n", __func__, pbn->bd, seq_target);
+			printk(KERN_EMERG "[%s] seq_origin %u, seq_new: %u, seq_target: %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->seq) + data_size, seq_target);
+			del_timer_sync(&(pbn->bd->timer));
+			list_del(iterator);
             kfree(pbn->bd->p);
             kfree_skb(pbn->bd->skb);
             kfree(pbn->bd);
