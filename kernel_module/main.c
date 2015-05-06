@@ -48,9 +48,9 @@ static int __init lkm_init(void)
 
 static void __exit lkm_exit(void)
 {
-    netlink_release();
+	hijack_stop((void*)target);
+	netlink_release();
 	connect_stat_cleanup(&conn_info_set);
-    hijack_stop((void*)target);
 }
 
 module_init(lkm_init);

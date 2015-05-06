@@ -129,7 +129,7 @@ int pd_check_action (struct sk_buff *skb, struct other_args* arg)
 int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char proto, u8 cause )
 {
     struct sk_buff* skb_mod = NULL;
-    struct list_head* packet_buf = NULL;
+    packet_buffer_t* packet_buf = NULL;
     struct buf_data* bd = NULL;
 
     switch ( proto )
@@ -220,7 +220,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
         }
         this_udp_info->mirror_port = ntohs ( udp_header->source );
-        if(list_empty(&this_udp_info->buffers.packet_buffer))
+        if(pkt_buffer_isempty(&this_udp_info->buffers.packet_buffer))
         {
             this_udp_info->unlock++;
             return 0;
@@ -277,7 +277,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             u32 this_ack_seq = ntohl(tcp_header->ack_seq);
             u32 respond_window = (ntohs(tcp_header->window) << this_tcp_info->window_scale);
             u32 send_size = 0;
-            struct list_head* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
+            packet_buffer_t* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
             struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege->prev;
             struct buf_data* bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
             /*
@@ -399,7 +399,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->saddr,};
-    struct list_head* packet_buf = NULL;
+    packet_buffer_t* packet_buf = NULL;
     struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
     struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
@@ -482,7 +482,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         struct udphdr* udp_header = udp_hdr ( skb );
         u16 client_port = ntohs ( udp_header->dest );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
-        struct list_head* packet_buf = & ( this_udp_info->buffers.packet_buffer );
+        packet_buffer_t* packet_buf = & ( this_udp_info->buffers.packet_buffer );
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP, .host_type = HOST_TYPE_TARGET};

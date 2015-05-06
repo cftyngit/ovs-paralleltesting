@@ -21,7 +21,7 @@ struct buf_packet
 
 struct commom_buffers
 {
-    struct list_head packet_buffer;
+    packet_buffer_t packet_buffer;
     struct compare_buffer target_buffer;
     struct compare_buffer mirror_buffer;
 };

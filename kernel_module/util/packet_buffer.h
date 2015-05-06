@@ -26,16 +26,31 @@ struct pkt_buffer_node
     int barrier;
 };
 
-int pkt_buffer_insert(struct pkt_buffer_node* pbn, struct list_head* head);
+typedef struct packet_buffer_s
+{
+	struct list_head buffer_head;
+	spinlock_t packet_lock;
+}packet_buffer_t;
 
-struct buf_data* pkt_buffer_get_data(struct list_head* head);
-struct buf_data* pkt_buffer_peek_data(struct list_head* head);
-struct buf_data* pkt_buffer_peek_data_from_ptr(struct list_head* head, struct list_head** ptr);
+void pkt_buffer_init(packet_buffer_t* pbuf);
+int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf);
+int pkt_buffer_isempty(packet_buffer_t* pbuf);
 
-int pkt_buffer_cleanup(struct list_head* head);
+struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf);
+struct buf_data* pkt_buffer_peek_data(packet_buffer_t* pbuf);
+/**
+ * pkt_buffer_peek_data_from_ptr - peek buf_data from given pointer
+ * this function must protected in spinlock_t packet_lock
+ * @pbuf: packet_buffer
+ * @ptr: pointer point to target buf_node, it will point to the next buf_node when this function return
+ * @return pointer poin to buf_data contained in ptr pointed or NULL if some error happen
+ */
+struct buf_data* pkt_buffer_peek_data_from_ptr(packet_buffer_t* pbuf, struct list_head** ptr);
 
-int pkt_buffer_barrier_add(struct list_head* head);
-int pkt_buffer_barrier_remove(struct list_head* head);
+int pkt_buffer_cleanup(packet_buffer_t* pbuf);
+
+int pkt_buffer_barrier_add(packet_buffer_t* pbuf);
+int pkt_buffer_barrier_remove(packet_buffer_t* pbuf);
 
 #define packet_buffer_remove(bn) \
     list_del(bn->list)

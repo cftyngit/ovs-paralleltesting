@@ -4,7 +4,7 @@ struct host_conn_info_set conn_info_set = HOST_CONN_INFO_SET_INIT;
 
 static inline void init_buffers(struct commom_buffers* bufs)
 {
-    INIT_LIST_HEAD(&(bufs->packet_buffer));
+    pkt_buffer_init(&bufs->packet_buffer);
     INIT_LIST_HEAD(&(bufs->mirror_buffer.buffer_head));
 	spin_lock_init(&(bufs->mirror_buffer.compare_lock));
     INIT_LIST_HEAD(&(bufs->target_buffer.buffer_head));
@@ -18,8 +18,8 @@ static inline void init_tcp_info(struct tcp_conn_info* tcp_info)
     memset(tcp_info, 0, sizeof(struct tcp_conn_info));
     tcp_info->state = TCP_STATE_LISTEN;
     init_buffers(&(tcp_info->buffers));
-    tcp_info->playback_ptr = &(tcp_info->buffers.packet_buffer);
-    tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer);
+    tcp_info->playback_ptr = &(tcp_info->buffers.packet_buffer.buffer_head);
+    tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer.buffer_head);
     spin_lock_init(&(tcp_info->playback_ptr_lock));
 	spin_lock_init(&(tcp_info->compare_lock));
 	spin_lock_init(&(tcp_info->retranstimer_lock));
@@ -138,7 +138,9 @@ static void tcp_stat_cleanup(struct radix_tree_root* tcp_info_set)
 		if(tci != NULL)
 		{
 			PRINT_DEBUG("[%s] information about tcp: %lu\n", __func__, iter.index);
-			pkt_buffer_cleanup(&(tci->buffers.packet_buffer));
+			while(pkt_buffer_cleanup(&(tci->buffers.packet_buffer)))
+				ssleep(1);
+
 			compare_buffer_cleanup(&(tci->buffers.mirror_buffer));
 			compare_buffer_cleanup(&(tci->buffers.target_buffer));
 			radix_tree_delete(tcp_info_set, iter.index);
@@ -158,7 +160,9 @@ static void udp_stat_cleanup(struct radix_tree_root* udp_info_set)
 		if(uci != NULL)
 		{
 			PRINT_DEBUG("[%s] information about udp: %lu\n", __func__, iter.index);
-			pkt_buffer_cleanup(&(uci->buffers.packet_buffer));
+			while(pkt_buffer_cleanup(&(uci->buffers.packet_buffer)))
+				ssleep(1);
+
 			compare_buffer_cleanup(&(uci->buffers.mirror_buffer));
 			compare_buffer_cleanup(&(uci->buffers.target_buffer));
 			radix_tree_delete(udp_info_set, iter.index);

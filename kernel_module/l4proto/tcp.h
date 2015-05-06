@@ -13,9 +13,11 @@
 
 struct retransmit_info
 {
-    struct list_head* list;
+    struct list_head list;
     struct tcp_conn_info* tcp_info;
     union my_ip_type ip;
+	struct buf_data* bd;
+	struct timer_list* timer;
     u16 client_port;
 };
 
