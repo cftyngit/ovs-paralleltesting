@@ -150,9 +150,13 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 
 		list_del(iterator);
 		kfree(pbn->bd->p);
+		pbn->bd->p = NULL;
 		kfree_skb(pbn->bd->skb);
+		pbn->bd->skb = NULL;
 		kfree(pbn->bd);
+		pbn->bd = NULL;
 		kfree(pbn);
+		
 	}
 out:
 	spin_unlock(&pbuf->packet_lock);

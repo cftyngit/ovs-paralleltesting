@@ -659,12 +659,12 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 	int data_packet_counter = 0;
     if(NULL == this_tcp_info || NULL == packet_buf)
     {
-        PRINT_ERROR("[%s] get this_tcp_info fail\n", __func__);
+        PRINT_ERROR("get this_tcp_info fail\n");
         return -1;
     }
     if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
 	{
-		PRINT_DEBUG("[%s] line %d\n", __func__, __LINE__);
+		PRINT_DEBUG("line %d\n", __LINE__);
         return 0;
 	}
 	spin_lock(&packet_buf->packet_lock);
@@ -680,14 +680,14 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
 		{
-			PRINT_DEBUG("[%s] line %d\n", __func__, __LINE__);
+			PRINT_DEBUG("line %d\n", __LINE__);
             break;
 		}
 
 		bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
         if ( NULL == bd )
 		{
-			PRINT_DEBUG("[%s] NULL == bd\n", __func__);
+			PRINT_DEBUG("NULL == bd\n");
             break;
 		}
 		if(cause == CAUSE_BY_RETRAN)
@@ -707,7 +707,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         if(cause != CAUSE_BY_RETRAN && seq_tmp > this_tcp_info->seq_next)
         {
             struct sk_buff* tmp = NULL;
-			PRINT_DEBUG("[%s] seq_tmp: %u, seq_next: %u\n", __func__, seq_tmp, this_tcp_info->seq_next);
+			PRINT_DEBUG("seq_tmp: %u, seq_next: %u\n", seq_tmp, this_tcp_info->seq_next);
             if( TCP_STATE_ESTABLISHED == this_tcp_info->state && this_tcp_info->ackseq_last_from_target >= ntohl(tcp_header->seq))
             {
                 u32 target_ack_seq = 0;
@@ -720,7 +720,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
                 kfree_skb(skb_mod);
                 if(NULL == tmp)
 				{
-					PRINT_DEBUG("[%s] build_ack_sk_buff fail\n", __func__);
+					PRINT_DEBUG("build_ack_sk_buff fail\n");
                     break;
 				}
                 should_break = 1;
@@ -729,8 +729,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             }
             else
             {
-				PRINT_DEBUG("[%s] TCP_STATE_ESTABLISHED != this_tcp_info->state\n", __func__);
-				PRINT_DEBUG("[%s] ackseq_last_from_target: %u, tcp_header->seq: %u\n", __func__, this_tcp_info->ackseq_last_from_target, ntohl(tcp_header->seq));
+				PRINT_DEBUG("TCP_STATE_ESTABLISHED != this_tcp_info->state\n");
+				PRINT_DEBUG("ackseq_last_from_target: %u, tcp_header->seq: %u\n", this_tcp_info->ackseq_last_from_target, ntohl(tcp_header->seq));
                 kfree_skb(skb_mod);
                 break;
             }
@@ -741,7 +741,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
         if(cause != CAUSE_BY_RETRAN && data_size > this_tcp_info->window_current)
         {
-			PRINT_DEBUG("[%s] data_size: %zu, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
+			PRINT_DEBUG("data_size: %zu, window_current: %u\n", data_size, this_tcp_info->window_current);
             kfree_skb(skb_mod);
             break;
         }
@@ -772,7 +772,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				info->tcp_info = this_tcp_info;
 				info->bd = bd;
 				info->timer = &bd->timer;
-				PRINT_DEBUG("[%s] retrans info: %p\n", __func__, info);
+				PRINT_DEBUG("retrans info: %p\n", info);
 				spin_lock(&(this_tcp_info->retranstimer_lock));
 				if(timer_pending(&(bd->timer)))
 				{
@@ -781,7 +781,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				}
 				setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
 				//mod_timer(&(bd->timer), jiffies + msecs_to_jiffies(200));
-				PRINT_DEBUG("[%s] setup_timer: %u\n", __func__, bd->retrans_times);
+				PRINT_DEBUG("setup_timer: %u\n", bd->retrans_times);
 				mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
 				spin_unlock(&(this_tcp_info->retranstimer_lock));
 			}
@@ -885,7 +885,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
         this_tcp_info->last_send_size = data_size;
 
-		PRINT_DEBUG("[%s] send_skbmod: %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
+		PRINT_DEBUG("send_skbmod %p: %u, %u, %d\n", bd, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_packet_counter);
         //send_skbmod ( bd->p, skb_mod );
 		send_skbmod(skb_mod, bd->p);
 		
@@ -994,13 +994,14 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
     struct list_head* iterator = NULL;
 	packet_buffer_t* pbuf = &(this_tcp_info->buffers.packet_buffer);
     struct list_head* head = NULL;
-    struct list_head* ret = head;
+    struct list_head* ret = NULL;
     struct iphdr* ip_header;
     struct tcphdr* tcp_header;
     size_t data_size;
 
 	spin_lock(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
+	ret = head;
     if(list_empty(head))
 	{
 		spin_unlock(&pbuf->packet_lock);
@@ -1020,7 +1021,7 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
 ///        printk("[%s] %p check seq: %u, target_seq: %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq), real_target_seq);
         if(ntohl(tcp_header->seq) <= real_target_seq && ntohl(tcp_header->seq) + data_size > real_target_seq)
 		{
-			PRINT_DEBUG("[%s] target_seq: %u, real: %u, get: %zu\n", __func__, seq_target, real_target_seq, ntohl(tcp_header->seq) + data_size);
+			PRINT_DEBUG("[%s] target_seq: %u, real: %u, get: %zu(%u,%zu) at %p, ret %p\n", __func__, seq_target, real_target_seq, ntohl(tcp_header->seq) + data_size, ntohl(tcp_header->seq), data_size, pbn->bd, ret);
             goto out;
 		}
         ret = iterator;
@@ -1033,20 +1034,27 @@ out:
 
 void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this_tcp_info)
 {
-    if(NULL == target_prt || LIST_POISON1 == target_prt || LIST_POISON2 == target_prt)
-        return;
-    spin_lock(&(this_tcp_info->playback_ptr_lock));
-    this_tcp_info->playback_ptr = target_prt;
-    spin_unlock(&(this_tcp_info->playback_ptr_lock));
+	if(NULL == target_prt || LIST_POISON1 == target_prt || LIST_POISON2 == target_prt)
+	{
+		PRINT_ERROR("target ptr is invalid");
+		return;
+	}
+	this_tcp_info->playback_ptr = target_prt;
 }
 
 int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, struct tcp_conn_info* this_tcp_info)
 {
-    if(NULL == ptr)
-        return -1;
-
-    setup_playback_ptr(ptr, this_tcp_info);
-    return tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
+	int ret = 0;
+	if(NULL == ptr)
+	{
+		PRINT_ERROR("retrans ptr is NULL");
+		return -1;
+	}
+	spin_lock(&(this_tcp_info->playback_ptr_lock));
+	setup_playback_ptr(ptr, this_tcp_info);
+	ret = tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
+	spin_unlock(&(this_tcp_info->playback_ptr_lock));
+	return ret;
 }
 
 void retransmit_by_timer(unsigned long ptr)
@@ -1073,5 +1081,6 @@ void retransmit_by_timer(unsigned long ptr)
 	rcu_read_lock();
     retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
 	rcu_read_unlock();
+	kfree(info);
 }
 

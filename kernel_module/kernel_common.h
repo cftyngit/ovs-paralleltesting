@@ -13,13 +13,13 @@
 #include "../commom.h"
 
 #if DEBUG==1
-#define PRINT_DEBUG(str, ...)	do {printk(KERN_DEBUG str, ##__VA_ARGS__);} while (0)
+#define PRINT_DEBUG(str, ...)	do {printk(KERN_DEBUG "[%s]: " str, __func__, ##__VA_ARGS__);} while (0)
 #else
 #define PRINT_DEBUG(str, ...)	do {} while (0)
 #endif
 
 #if INFO==1
-#define PRINT_INFO(str, ...)	do {printk(KERN_INFO str, ##__VA_ARGS__);} while (0)
+#define PRINT_INFO(str, ...)	do {printk(KERN_INFO "[%s]: " str, __func__, ##__VA_ARGS__);} while (0)
 #else
 #define PRINT_INFO(str, ...)	do {} while (0)
 #endif
@@ -27,7 +27,7 @@
 #if NOERR==1
 #define PRINT_ERROR(str, ...)	do {} while (0)
 #else
-#define PRINT_ERROR(str, ...)	do {printk(KERN_ERR str, ##__VA_ARGS__);} while (0)
+#define PRINT_ERROR(str, ...)	do {printk(KERN_ERR "[%s]: " str, __func__, ##__VA_ARGS__);} while (0)
 #endif
 
 extern struct host_info server;

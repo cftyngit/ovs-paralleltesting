@@ -179,9 +179,13 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
         //pkt_buffer_barrier_remove ( packet_buf );
         break;
 	case IPPROTO_TCP:
-//		packet_buf = & ( TCP_CONN_INFO(&conn_info_set, ip, client_port)->buffers.packet_buffer );
+	{
+		struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
+		spin_lock(&(this_tcp_info->playback_ptr_lock));
 		tcp_playback_packet( ip, client_port, cause);
+		spin_unlock(&(this_tcp_info->playback_ptr_lock));
 		break;
+	}
     default:
         //kfree_skb ( skb_mod );
         return -1;
@@ -237,7 +241,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_MIRROR};
         u32 this_tsval = get_tsval(skb);
 
-		PRINT_DEBUG("[%s] input port: %hu\n", __func__, ovs_get_port_no(arg));
+//		PRINT_DEBUG("[%s] input port: %hu\n", __func__, ovs_get_port_no(arg));
 		/*
 		 * if connection hasn't setup we ignore all "normal packet"
 		 */
@@ -310,31 +314,32 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                  * process dup ACK and 3 dup ACK retransmission
                  */
 ///                printk("[%s] this_ack_seq: %u, seq_edge: %u, data_size_edge:%lu\n", __func__, this_ack_seq, seq_edge, data_size_edge);
-                if(this_ack_seq < seq_edge + data_size_edge)
-                {
-                    struct list_head* playback_ptr = NULL;
+				if(this_ack_seq < seq_edge + data_size_edge)
+				{
+					struct list_head* playback_ptr = NULL;
 //					PRINT_DEBUG("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
-                    if(this_ack_seq != this_tcp_info->seq_dup_ack)
-                    {
-                        this_tcp_info->seq_dup_ack = this_ack_seq;
-                        this_tcp_info->dup_ack_counter = 1;
-                    }
-                    else
-                    {
-                        ++this_tcp_info->dup_ack_counter;
-                        if(1 && this_tcp_info->dup_ack_counter == 3)
-                        {//add re transmission func here
-                            playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
-                            this_tcp_info->window_current = respond_window;
-                            setup_playback_ptr(playback_ptr, this_tcp_info);
-                            PRINT_DEBUG("[%s] 3 dup ack %u \n", __func__, this_ack_seq);
-                            goto retransmission;
-                        }
-						if(this_tcp_info->dup_ack_counter > 3)
-						{
-							if(this_tcp_info->dup_ack_counter == 15)
+					if(this_ack_seq != this_tcp_info->seq_dup_ack)
+					{
+						this_tcp_info->seq_dup_ack = this_ack_seq;
+						this_tcp_info->dup_ack_counter = 1;
+					}
+					else
+					{
+						++this_tcp_info->dup_ack_counter;
+						if(1 && this_tcp_info->dup_ack_counter >= 3)
+						{//add re transmission func here
+							if(this_tcp_info->dup_ack_counter >= 15)
+							{
 								this_tcp_info->dup_ack_counter = 0;
-
+								return 0;
+							}
+							playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+							this_tcp_info->window_current = respond_window;
+							PRINT_DEBUG("3 dup ack %u, %p\n", this_ack_seq, playback_ptr);
+							if(playback_ptr)
+								retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
+							else
+								--this_tcp_info->dup_ack_counter;
 							return 0;
 						}
                     }
@@ -342,15 +347,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                     {
                         playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
                         this_tcp_info->window_current = respond_window;
-                        setup_playback_ptr(playback_ptr, this_tcp_info);
-                        goto retransmission;
-                    }
-retransmission:
-                    if(NULL != playback_ptr)
-                    {
-///                        printk("[%s] playback_ptr: %p \n", __func__, playback_ptr);
-                        pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_RETRAN );
-                        return 0;
+                        retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
                     }
                 }
                 else if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
