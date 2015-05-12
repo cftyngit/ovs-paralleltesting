@@ -739,16 +739,15 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         ip_header = ip_hdr ( skb_mod );
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
-        if(cause != CAUSE_BY_RETRAN && data_size > this_tcp_info->window_current)
-        {
+		if(cause != CAUSE_BY_RETRAN && data_size > this_tcp_info->window_current)
+		{
 			PRINT_DEBUG("data_size: %zu, window_current: %u\n", data_size, this_tcp_info->window_current);
-            kfree_skb(skb_mod);
-            break;
-        }
-        /*
-         * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
-         * we can remove it from packet buffer and send to mirror
-         */
+			should_break = 1;
+		}
+		/*
+		 * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
+		 * we can remove it from packet buffer and send to mirror
+		 */
 		if(data_size || tcp_header->syn || tcp_header->fin)
 		{
 			u32 seq_target = 0;
