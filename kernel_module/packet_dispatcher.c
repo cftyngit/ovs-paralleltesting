@@ -326,13 +326,8 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 					else
 					{
 						++this_tcp_info->dup_ack_counter;
-						if(1 && this_tcp_info->dup_ack_counter >= 3)
+						if(1 && this_tcp_info->dup_ack_counter == 3)
 						{//add re transmission func here
-							if(this_tcp_info->dup_ack_counter >= 15)
-							{
-								this_tcp_info->dup_ack_counter = 0;
-								return 0;
-							}
 							playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
 							this_tcp_info->window_current = respond_window;
 							PRINT_DEBUG("3 dup ack %u, %p\n", this_ack_seq, playback_ptr);
@@ -340,8 +335,11 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 								retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
 							else
 								--this_tcp_info->dup_ack_counter;
-							return 0;
 						}
+						else if(this_tcp_info->dup_ack_counter >= 15)
+							this_tcp_info->dup_ack_counter = 0;
+
+						return 0;
                     }
                     if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
                     {

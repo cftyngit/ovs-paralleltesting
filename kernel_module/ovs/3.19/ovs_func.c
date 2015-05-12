@@ -19,7 +19,7 @@ void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct
 
 struct other_args
 {
-	struct vport vport;
+	struct vport* vport;
 	const struct ovs_tunnel_info* tun_info;
 };
 const size_t sizeof_other_args = sizeof(struct other_args);
@@ -50,7 +50,7 @@ void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct
 	struct pcpu_sw_netstats *stats;
 	struct sw_flow_key key;
 	int error;
-	struct other_args arg = {*vport, tun_info};
+	struct other_args arg = {vport, tun_info};
 
 	stats = this_cpu_ptr(vport->percpu_stats);
 	u64_stats_update_begin(&stats->syncp);
@@ -96,7 +96,7 @@ inline void ovs_normal_output(struct sk_buff *skb, struct other_args *args)
 	int error;
 	
 	if(NULL == OVS_CB(skb)->input_vport)
-		OVS_CB(skb)->input_vport = &args->vport;
+		OVS_CB(skb)->input_vport = args->vport;
 
 	error = ovs_flow_key_extract(args->tun_info, skb, &key);
 	if (unlikely(error)) {
@@ -115,7 +115,7 @@ static inline struct vport *ovs_vport_rcu(const struct datapath *dp, int port_no
 
 inline void ovs_vport_output(struct sk_buff *skb, int port_no, struct other_args *args)
 {
-	struct datapath *dp = args->vport.dp;
+	struct datapath *dp = args->vport->dp;
 	struct vport *vport = ovs_vport_rcu(dp, port_no);
 
 	if (likely(vport))
@@ -126,5 +126,5 @@ inline void ovs_vport_output(struct sk_buff *skb, int port_no, struct other_args
 
 inline int ovs_get_port_no(struct other_args* args)
 {
-	return (args->vport.port_no);
+	return (args->vport->port_no);
 }

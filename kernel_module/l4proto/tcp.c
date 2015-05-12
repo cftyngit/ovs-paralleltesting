@@ -749,7 +749,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
          * if the ack seq of "ready to respond" packet is not used to ack new mirror packet
          * we can remove it from packet buffer and send to mirror
          */
-
 		if(data_size || tcp_header->syn || tcp_header->fin)
 		{
 			u32 seq_target = 0;
@@ -905,61 +904,54 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 void slide_send_window(struct tcp_conn_info* this_tcp_info)
 {
 	packet_buffer_t* pbuf = &(this_tcp_info->buffers.packet_buffer);
-    struct list_head* head = NULL;
-    struct list_head *iterator, *tmp;
-    u32 seq_target = 0;
-    u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
-    u32 seq_rmhost = this_tcp_info->seq_rmhost;
-    struct pkt_buffer_node *pbn;
+	struct list_head* head = NULL;
+	struct list_head *iterator, *tmp;
+	u32 seq_target = 0;
+	u32 seq_rmhost_fake = this_tcp_info->seq_rmhost_fake;
+	u32 seq_rmhost = this_tcp_info->seq_rmhost;
+	struct pkt_buffer_node *pbn;
 
 	spin_lock(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
-    if(list_empty(head))
-        goto out;
+	if(list_empty(head))
+		goto out;
+	/**
+	 * seq_target is the last seq acked by mirror
+	 */
+	if ( seq_rmhost_fake > seq_rmhost )
+		seq_target = this_tcp_info->seq_last_ack - ( seq_rmhost_fake - seq_rmhost );
+	else
+		seq_target = this_tcp_info->seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
 
-    if ( seq_rmhost_fake > seq_rmhost )
-        seq_target = this_tcp_info->seq_last_ack - ( seq_rmhost_fake - seq_rmhost );
-    else
-        seq_target = this_tcp_info->seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
-
-    list_for_each_safe(iterator, tmp, head)
-    {
+	list_for_each_safe(iterator, tmp, head)
+	{
 		struct tcphdr* tcp_header = NULL;
 		struct iphdr* ip_header = NULL;
 		u16 data_size = 0;
-        pbn = list_entry(iterator, struct pkt_buffer_node, list);
+		pbn = list_entry(iterator, struct pkt_buffer_node, list);
 		ip_header = ip_hdr ( pbn->bd->skb );
 		tcp_header = tcp_hdr ( pbn->bd->skb );
 		data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
 		if(tcp_header->syn || tcp_header->fin)
 			data_size += 1;
 
-        if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size <= seq_target )
-        {
-			int ret = 0, ret2 = 0;
-            if( iterator == this_tcp_info->playback_ptr )
-                break;
-
-///            printk("[%s] del pkt %p %u\n", __func__, iterator, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
-            //printk("[%s] del pkt \n", __func__, ntohl(tcp_hdr ( pbn->bd->skb )->seq));
-            
-//			if(timer_pending(&(pbn->bd->timer)))
-//			printk(KERN_EMERG "[%s] del pkt %p, seq_target: %u\n", __func__, pbn->bd, seq_target);
-//			printk(KERN_EMERG "[%s] seq_origin %u, seq_new: %u, seq_target: %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->seq) + data_size, seq_target);
-			ret2 = timer_pending(&pbn->bd->timer);
-			ret = try_to_del_timer_sync(&pbn->bd->timer);
-			printk(KERN_EMERG "[%s] bd: %p, pending: %d, try_del: %d\n", __func__, pbn->bd, ret2, ret);
-			if(ret < 0)
+		if(ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size <= seq_target )
+		{
+			if( iterator == this_tcp_info->playback_ptr )
 				break;
+
+			if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+				break;
+
 			list_del(iterator);
-            kfree(pbn->bd->p);
-            kfree_skb(pbn->bd->skb);
-            kfree(pbn->bd);
-            kfree(pbn);
-        }
-        else
-            break;
-    }
+			kfree(pbn->bd->p);
+			kfree_skb(pbn->bd->skb);
+			kfree(pbn->bd);
+			kfree(pbn);
+		}
+		else
+			break;
+	}
 out:
 	spin_unlock(&pbuf->packet_lock);
 	return;
