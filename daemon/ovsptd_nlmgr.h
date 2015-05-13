@@ -12,6 +12,7 @@
 #include "user_common.h"
 
 int nl_init();
+int nl_uninit();
 int get_nl_socket();
 int send_nl_message(int fd, int type, void* data, size_t length);
 int nl_setup_host(struct setup_message setup_m);

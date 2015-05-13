@@ -664,8 +664,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
     }
     if(CAUSE_BY_RMHOST == cause && this_tcp_info->send_wnd_right_dege != this_tcp_info->playback_ptr)
 	{
-		PRINT_DEBUG("line %d\n", __LINE__);
-        return 0;
+//		PRINT_DEBUG("line %d\n", __LINE__);
+		return 0;
 	}
 	spin_lock(&packet_buf->packet_lock);
     do
@@ -680,18 +680,16 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
 		{
-			PRINT_DEBUG("line %d\n", __LINE__);
-            break;
+//			PRINT_DEBUG("line %d\n", __LINE__);
+			break;
 		}
 
 		bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
-        if ( NULL == bd )
+		if ( NULL == bd )
 		{
-			PRINT_DEBUG("NULL == bd\n");
-            break;
+//			PRINT_DEBUG("NULL == bd\n");
+			break;
 		}
-		if(cause == CAUSE_BY_RETRAN)
-			printk(KERN_EMERG "[%s] retrans: %p, ptr: %p\n", __func__, bd, this_tcp_info->playback_ptr);
         /*
          * peek new packet from packet buffer to see whether it's ack seq is newer
          * than the lastest packet from mirror
@@ -759,8 +757,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				seq_target = this_tcp_info->seq_last_ack - ( seq_rmhost_fake - seq_rmhost );
 			else
 				seq_target = this_tcp_info->seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
-			if(cause == CAUSE_BY_RETRAN)
-				printk(KERN_EMERG "[%s] retrans timer: %p, next_seq: %u, acked_seq: %u, ptr: %p\n", __func__, bd, ntohl(tcp_header->seq), seq_target, this_tcp_info->playback_ptr);
+
 			if(ntohl(tcp_header->seq) + data_size > seq_target)
 			{
 				info = kmalloc(sizeof(struct retransmit_info), GFP_ATOMIC);
@@ -770,7 +767,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				info->tcp_info = this_tcp_info;
 				info->bd = bd;
 				info->timer = &bd->timer;
-				PRINT_DEBUG("retrans info: %p\n", info);
 				spin_lock(&(this_tcp_info->retranstimer_lock));
 				if(timer_pending(&(bd->timer)))
 				{
@@ -861,13 +857,16 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				tcp_header->seq = new_seq;
 			}
 		}
-        this_tcp_info->window_current -= data_size;
-        /*
-        if(this_tcp_info->mirror_port)
-            tcp_header->dest = htons(this_tcp_info->mirror_port);
-        */
-        if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
-            this_tcp_info->tsval_last_send = get_tsval(skb_mod);
+		if(CAUSE_BY_RETRAN != cause)
+		{
+			this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
+			this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
+			this_tcp_info->last_send_size = data_size;
+			this_tcp_info->window_current -= data_size;
+		}
+		if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
+			this_tcp_info->tsval_last_send = get_tsval(skb_mod);
+
 		setup_options(skb_mod, this_tcp_info);
         pd_modify_ip_mac ( skb_mod );
 		if(this_tcp_info->mirror_port)
@@ -879,12 +878,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			tcp_header->dest = htons(this_tcp_info->mirror_port);
 			skb_clear_hash(skb_mod);
 		}
-        this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
-        this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
-        this_tcp_info->last_send_size = data_size;
-
 		PRINT_DEBUG("send_skbmod %p: %u, %u, %d\n", bd, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_packet_counter);
-        //send_skbmod ( bd->p, skb_mod );
+
 		send_skbmod(skb_mod, bd->p);
 		
         if(!should_break)
@@ -1065,10 +1060,10 @@ void retransmit_by_timer(unsigned long ptr)
     bd = pkt_buffer_peek_data_from_ptr ( & ( this_tcp_info->buffers.packet_buffer ), &retrans_ptr_tmp );
     if(NULL == bd)
         return;
-	printk(KERN_EMERG "[%s] get bd: %p, should bd: %p, timer: %p", __func__, bd, info->bd, info->timer);
-    if(bd->retrans_times < 7)
+
+    if(bd->retrans_times < 4)
         bd->retrans_times++;
-//	PRINT_DEBUG("[%s] before retransmit_form_ptr\n", __func__);
+
 	rcu_read_lock();
     retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
 	rcu_read_unlock();

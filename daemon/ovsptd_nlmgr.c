@@ -24,7 +24,6 @@ int nl_init()
 		nl_sockfd = 0;
 		return -1;
 	}
-
 	nl_sockfd = ret;
 	return 0;
 }
@@ -96,7 +95,7 @@ int send_nl_message(int fd, int type, void* data, size_t length)
     dst_addr.nl_pid = 0; // 表示内核
     dst_addr.nl_groups = 0; //未指定接收多播组
 
-    nlh = malloc(NLMSG_SPACE(length + sizeof(struct nlmsghdr)));
+    nlh = (struct nlmsghdr*)malloc(NLMSG_SPACE(length + sizeof(struct nlmsghdr)));
 
     nlh->nlmsg_len = NLMSG_SPACE(length + sizeof(struct nlmsghdr)); //保证对齐
     nlh->nlmsg_pid = getpid();  /* self pid */

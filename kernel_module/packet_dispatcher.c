@@ -326,19 +326,17 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 					else
 					{
 						++this_tcp_info->dup_ack_counter;
-						if(1 && this_tcp_info->dup_ack_counter == 3)
+						if(1 && this_tcp_info->dup_ack_counter >= 3)
 						{//add re transmission func here
 							playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
 							this_tcp_info->window_current = respond_window;
 							PRINT_DEBUG("3 dup ack %u, %p\n", this_ack_seq, playback_ptr);
 							if(playback_ptr)
+							{
+								this_tcp_info->dup_ack_counter = 0;
 								retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
-							else
-								--this_tcp_info->dup_ack_counter;
+							}
 						}
-						else if(this_tcp_info->dup_ack_counter >= 15)
-							this_tcp_info->dup_ack_counter = 0;
-
 						return 0;
                     }
                     if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
@@ -379,7 +377,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         }
         set_tcp_state ( NULL, skb );
 //from_mirror_respond_mirror:
-        pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
+		pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
 		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && !tcp_header->syn && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
 		{
 			PRINT_DEBUG("[%s] ack this packet: state: state: %d, data_size: %zu, last_play: %u\n", __func__, this_tcp_info->state, data_size, this_tcp_info->ackseq_last_playback);

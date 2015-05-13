@@ -27,10 +27,11 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 
 		prev = iterator;
 	}
-	if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num)
-		list_add(&pbn->list, iterator);
-	else
-		printk("[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, pbn->seq_num_next, list_entry(prev, struct pkt_buffer_node, list)->seq_num);
+// 	if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num)
+// 		list_add(&pbn->list, iterator);
+// 	else
+// 		printk("[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, pbn->seq_num_next, list_entry(prev, struct pkt_buffer_node, list)->seq_num);
+	list_add(&pbn->list, iterator);
 out:
 	spin_unlock(&pbuf->packet_lock);
 	return 0;
@@ -126,7 +127,7 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 	struct list_head* head = NULL;
 	struct list_head *iterator = NULL, *tmp = NULL;
 	struct pkt_buffer_node *pbn = NULL;
-	int ret = 0, ret2 = 0;
+	int ret = 0;
 
 	if(!spin_trylock(&pbuf->packet_lock))
 		return -1;
@@ -141,11 +142,7 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 			continue;
         
 		pbn = list_entry(iterator, struct pkt_buffer_node, list);
-		
-		ret2 = timer_pending(&pbn->bd->timer);
-		ret = try_to_del_timer_sync(&pbn->bd->timer);
-		printk(KERN_EMERG "[%s] bd: %p, pending: %d, try_del: %d\n", __func__, pbn->bd, ret2, ret);
-		if(ret < 0)
+		if((ret = try_to_del_timer_sync(&pbn->bd->timer)) < 0)
 			goto out;
 
 		list_del(iterator);

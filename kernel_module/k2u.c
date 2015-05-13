@@ -29,7 +29,7 @@ static void udp_receive(struct sk_buff *skb)
 			if (!out_nlh) 
 				goto failure;
 
-			PRINT_INFO("reg daemon success\n");
+			PRINT_INFO("unreg daemon success\n");
 		}
 		else
 		{
@@ -37,7 +37,7 @@ static void udp_receive(struct sk_buff *skb)
 			if (!out_nlh) 
 				goto failure;
 
-			PRINT_ERROR("reg daemon fail\n");
+			PRINT_ERROR("unreg daemon fail\n");
 		}
 		nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
 		break;
@@ -51,7 +51,7 @@ static void udp_receive(struct sk_buff *skb)
 		}
 		else
 		{
-			PRINT_DEBUG("reg daemon success\n");
+			PRINT_INFO("reg daemon success\n");
 			ret = NLMSG_SUCCESS;
 		}
 		daemon_pid = nlh->nlmsg_pid;

@@ -22,8 +22,14 @@
 #  define MSG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
 # endif
 
-#define SETUP_TARGET 1
-#define SETUP_MIRROR 2
+#define SETUP_MIRROR	1
+#define SETUP_TARGET	2
+#define ECHO			3
+#define RECV_PACKET		4
+
+#define XSTR(A) STR(A)
+#define STR(A) #A
+#define MAX_ECHO 1000
 
 struct setup_message
 {

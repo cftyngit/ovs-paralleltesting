@@ -137,7 +137,7 @@ static void tcp_stat_cleanup(struct radix_tree_root* tcp_info_set)
 		struct tcp_conn_info* tci = radix_tree_deref_slot(slot);
 		if(tci != NULL)
 		{
-			PRINT_DEBUG("[%s] information about tcp: %lu\n", __func__, iter.index);
+			PRINT_DEBUG("information about tcp: %lu\n", iter.index);
 			while(pkt_buffer_cleanup(&(tci->buffers.packet_buffer)))
 				ssleep(1);
 
@@ -159,7 +159,7 @@ static void udp_stat_cleanup(struct radix_tree_root* udp_info_set)
 		struct udp_conn_info* uci = radix_tree_deref_slot(slot);
 		if(uci != NULL)
 		{
-			PRINT_DEBUG("[%s] information about udp: %lu\n", __func__, iter.index);
+			PRINT_DEBUG("information about udp: %lu\n", iter.index);
 			while(pkt_buffer_cleanup(&(uci->buffers.packet_buffer)))
 				ssleep(1);
 
@@ -180,7 +180,7 @@ void connect_stat_cleanup(struct host_conn_info_set* conn_info_set)
 		struct host_conn_info *hci = radix_tree_deref_slot(slot);
 		if(hci != NULL)
 		{
-			PRINT_DEBUG("[%s] information about page: %lu\n", __func__, iter.index);
+			PRINT_DEBUG("information about page: %lu\n", iter.index);
 			tcp_stat_cleanup(&hci->tcp_info_set);
 			udp_stat_cleanup(&hci->udp_info_set);
 			radix_tree_delete(&(conn_info_set->conn_info_set), iter.index);
