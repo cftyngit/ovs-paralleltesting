@@ -15,8 +15,32 @@ static void udp_receive(struct sk_buff *skb)
     //struct k2u_message data;
     nlh = nlmsg_hdr(skb);
 
-    switch(nlh->nlmsg_type)
-    {
+	switch(nlh->nlmsg_type)
+	{
+	case NLMSG_DAEMON_UNREG:
+		out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
+		if (!out_skb) 
+			goto failure;
+
+		if(!daemon_pid || daemon_pid == nlh->nlmsg_pid)
+		{
+			daemon_pid = 0;
+			out_nlh = nlmsg_put(out_skb, 0, 0, NLMSG_SUCCESS, 0, 0); //填充协议头数据
+			if (!out_nlh) 
+				goto failure;
+
+			PRINT_INFO("reg daemon success\n");
+		}
+		else
+		{
+			out_nlh = nlmsg_put(out_skb, 0, 0, NLMSG_FAIL, 0, 0); //填充协议头数据
+			if (!out_nlh) 
+				goto failure;
+
+			PRINT_ERROR("reg daemon fail\n");
+		}
+		nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
+		break;
 	case NLMSG_DAEMON_REG:
 	{
 		int ret = 0;
@@ -38,52 +62,52 @@ static void udp_receive(struct sk_buff *skb)
 		nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
 		break;
 	}
-    case NLMSG_SETECHO:
-        break;
-    case NLMSG_GETECHO:
-        payload = nlmsg_data(nlh);
-        payload_len = nlmsg_len(nlh);
-        PRINT_INFO("payload_len = %d\n", payload_len);
-        PRINT_INFO("Recievid: %s, From: %d\n", (char *)payload, nlh->nlmsg_pid);
-        out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
-        if (!out_skb) goto failure;
-            out_nlh = nlmsg_put(out_skb, 0, 0, NLMSG_SETECHO, payload_len, 0); //填充协议头数据
-        if (!out_nlh) goto failure;
-            out_payload = nlmsg_data(out_nlh);
-        strcpy(out_payload, "[from kernel]:"); // 在响应中加入字符串，以示区别
-        strcat(out_payload, payload);
-        nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
-        break;
-    case NLMSG_SETUP_MIRROR:
-        payload = nlmsg_data(nlh);
-        payload_len = nlmsg_len(nlh);
-        PRINT_INFO("payload_len = %d\n", payload_len);
-        PRINT_INFO("setup mirror IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
-               ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
-        PRINT_INFO("setup mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
-               ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
-               ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
+	case NLMSG_SETECHO:
+		break;
+	case NLMSG_GETECHO:
+		payload = nlmsg_data(nlh);
+		payload_len = nlmsg_len(nlh);
+		PRINT_INFO("payload_len = %d\n", payload_len);
+		PRINT_INFO("Recievid: %s, From: %d\n", (char *)payload, nlh->nlmsg_pid);
+		out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff
+		if (!out_skb) goto failure;
+			out_nlh = nlmsg_put(out_skb, 0, 0, NLMSG_SETECHO, payload_len, 0); //填充协议头数据
+		if (!out_nlh) goto failure;
+			out_payload = nlmsg_data(out_nlh);
+		strcpy(out_payload, "[from kernel]:"); // 在响应中加入字符串，以示区别
+		strcat(out_payload, payload);
+		nlmsg_unicast(netlink_sock, out_skb, nlh->nlmsg_pid);
+		break;
+	case NLMSG_SETUP_MIRROR:
+		payload = nlmsg_data(nlh);
+		payload_len = nlmsg_len(nlh);
+		PRINT_INFO("payload_len = %d\n", payload_len);
+		PRINT_INFO("setup mirror IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], 
+				((struct host_info *)payload)->ip.c[1], ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
+		PRINT_INFO("setup mirror MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+				((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
+				((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
 
-        pd_setup_hosts(NULL, ((struct host_info *)payload));
-        break;
-    case NLMSG_SETUP_SERVER:
-        payload = nlmsg_data(nlh);
-        payload_len = nlmsg_len(nlh);
-        PRINT_INFO("payload_len = %d\n", payload_len);
-        PRINT_INFO("setup server IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
-               ((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
-        PRINT_INFO("setup server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
-               ((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
-               ((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
+		pd_setup_hosts(NULL, ((struct host_info *)payload));
+		break;
+	case NLMSG_SETUP_SERVER:
+		payload = nlmsg_data(nlh);
+		payload_len = nlmsg_len(nlh);
+		PRINT_INFO("payload_len = %d\n", payload_len);
+		PRINT_INFO("setup server IP = %hhu.%hhu.%hhu.%hhu\n", ((struct host_info *)payload)->ip.c[0], ((struct host_info *)payload)->ip.c[1],
+				((struct host_info *)payload)->ip.c[2], ((struct host_info *)payload)->ip.c[3]);
+		PRINT_INFO("setup server MAC = %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", ((struct host_info *)payload)->mac[0], ((struct host_info *)payload)->mac[1],
+				((struct host_info *)payload)->mac[2], ((struct host_info *)payload)->mac[3], 
+				((struct host_info *)payload)->mac[4], ((struct host_info *)payload)->mac[5]);
 
-        pd_setup_hosts(((struct host_info *)payload), NULL);
-        break;
-    default:
-        PRINT_INFO("Unknow msgtype recieved!\n");
-    }
-    return;
+		pd_setup_hosts(((struct host_info *)payload), NULL);
+		break;
+	default:
+		PRINT_INFO("Unknow msgtype recieved!\n");
+	}
+	return;
 failure:
-    PRINT_INFO(" failed in fun dataready!\n");
+	PRINT_INFO(" failed in fun dataready!\n");
 }
 
 int netlink_init(void)
