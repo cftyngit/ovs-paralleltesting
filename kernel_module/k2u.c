@@ -181,7 +181,7 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 	void *out_payload;
 	int remain = length;
 	int send_size = 0;
-	spin_lock(&(send_lock));
+	spin_lock_bh(&(send_lock));
 	do
 	{
 		struct sk_buff *out_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL); //分配足以存放默认大小的sk_buff;
@@ -207,11 +207,11 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 		remain -= send_block;
 		send_size += send_block;
 	}while(0 < remain && should_break--);
-	spin_unlock(&(send_lock));
+	spin_unlock_bh(&(send_lock));
 	return send_size;
 
 failure:
-	spin_unlock(&(send_lock));
+	spin_unlock_bh(&(send_lock));
 	return -1;
 }
 
@@ -223,6 +223,9 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 	int send_size = 0;
 	char* buffer = kmalloc(NL_MAXPAYLOAD, GFP_KERNEL); //NL_MAXPAYLOAD is too large to alloc in stack
 	char* data_begin = buffer + sizeof(struct connection_info);
+	if(!buffer)
+		return -1;
+
 	memmove(buffer, info, sizeof(struct connection_info));
 	while(remain > 0 && should_break--)
 	{

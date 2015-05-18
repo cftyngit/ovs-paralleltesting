@@ -15,6 +15,8 @@ using std::cin;
 using std::pair;
 using std::string;
 
+map<connection_info, pair<string, string> > cmp_buffer;
+
 void fnExit (void)
 {
 	nl_uninit();
@@ -94,15 +96,35 @@ int receive_packet()
 	UINT16 type = 0;
 	char* data;
 	int size = 0;
-	size = recv_nl_message(&type, (void**)&data);
-	printf("receive mes type: %x, length: %d\n", type, size);
-	if(type == NLMSG_DATA_SEND)
+	while(size = recv_nl_message(&type, (void**)&data))
 	{
-		struct connection_info* inf = (struct connection_info*)data;
-		printf("host type: %d\n", inf->host_type);
-		printf("IP: %hhu.%hhu.%hhu.%hhu:%hu\n", inf->ip.c[0], 
-			inf->ip.c[1], inf->ip.c[2], inf->ip.c[3], inf->port
-		);
+		printf("receive mes type: %x, length: %d\n", type, size);
+		if(type == NLMSG_DATA_SEND)
+		{
+			struct connection_info* inf = (struct connection_info*)data;
+			connection_info inf_index = {inf->ip, inf->port, inf->proto, 0};
+			printf("host type: %d\n", inf->host_type);
+			printf("IP: %hhu.%hhu.%hhu.%hhu:%hu\n", inf->ip.c[0], 
+				inf->ip.c[1], inf->ip.c[2], inf->ip.c[3], inf->port);
+
+			if(cmp_buffer.find(inf_index) == cmp_buffer.end())
+			{
+				string target;
+				string mirror;
+				switch(inf->host_type)
+				{
+				case HOST_TYPE_TARGET:
+					
+					break;
+				case HOST_TYPE_MIRROR:
+					break;
+				default:
+					continue;
+				}
+				pair<string, string> buffer(target, mirror);
+				
+			}
+		}
 	}
 	return 0;
 }

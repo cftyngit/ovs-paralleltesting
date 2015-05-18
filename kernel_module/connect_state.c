@@ -48,7 +48,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->tcp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
+                get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
                 if(NULL == get_proto_state)
                     break;
 
@@ -60,7 +60,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->udp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
+                get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
                 if(NULL == get_proto_state)
                     break;
 
@@ -72,16 +72,16 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
     }
     else
     {
-        get_conn_info = kmalloc(sizeof(struct host_conn_info), GFP_ATOMIC);
+        get_conn_info = kmalloc(sizeof(struct host_conn_info), GFP_KERNEL);
         if(NULL == get_conn_info)
             return NULL;
 
-        INIT_RADIX_TREE(&(get_conn_info->tcp_info_set), GFP_ATOMIC);
-        INIT_RADIX_TREE(&(get_conn_info->udp_info_set), GFP_ATOMIC);
+        INIT_RADIX_TREE(&(get_conn_info->tcp_info_set), GFP_KERNEL);
+        INIT_RADIX_TREE(&(get_conn_info->udp_info_set), GFP_KERNEL);
         switch(proto)
         {
         case IPPROTO_TCP:
-            get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_ATOMIC);
+            get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
             if(NULL == get_proto_state)
                 break;
 
@@ -89,7 +89,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:
-            get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_ATOMIC);
+            get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
             if(NULL == get_proto_state)
                 break;
 

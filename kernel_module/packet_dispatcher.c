@@ -181,9 +181,9 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
 	case IPPROTO_TCP:
 	{
 		struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
-		spin_lock(&(this_tcp_info->playback_ptr_lock));
+		spin_lock_bh(&(this_tcp_info->playback_ptr_lock));
 		tcp_playback_packet( ip, client_port, cause);
-		spin_unlock(&(this_tcp_info->playback_ptr_lock));
+		spin_unlock_bh(&(this_tcp_info->playback_ptr_lock));
 		break;
 	}
     default:
@@ -262,11 +262,13 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = (bn->seq_num + data_size + (tcp_header->syn || tcp_header->fin)) % U32_MAX;
+            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
             bn->opt_key = get_tsval(skb);
             compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
+        else
+			kfree(data);
         /*
          * if get_tsval return 0, means this packet doesn't set tsval => doesn't need to update
          */
@@ -295,8 +297,10 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                 send_size = this_tcp_info->seq_last_send + this_tcp_info->last_send_size - this_ack_seq;
 
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
-            this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
-            slide_send_window(this_tcp_info);
+			if(ntohl(tcp_header->ack_seq) > this_tcp_info->seq_last_ack)
+				this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
+
+			slide_send_window(this_tcp_info);
 ///            printk("[%s] bd_edge: %p\n", __func__, bd_edge);
             if(TCP_STATE_ESTABLISHED == this_tcp_info->state && bd_edge)
             {
@@ -317,7 +321,6 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 				if(this_ack_seq < seq_edge + data_size_edge)
 				{
 					struct list_head* playback_ptr = NULL;
-//					PRINT_DEBUG("[%s] dup ack %u < %u\n", __func__, this_ack_seq, this_tcp_info->seq_last_send);
 					if(this_ack_seq != this_tcp_info->seq_dup_ack)
 					{
 						this_tcp_info->seq_dup_ack = this_ack_seq;
@@ -328,26 +331,42 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 						++this_tcp_info->dup_ack_counter;
 						if(1 && this_tcp_info->dup_ack_counter >= 3)
 						{//add re transmission func here
-							playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
 							this_tcp_info->window_current = respond_window;
-							PRINT_DEBUG("3 dup ack %u, %p\n", this_ack_seq, playback_ptr);
-							if(playback_ptr)
+							if(this_tcp_info->dup_ack_counter == 3)
+							{
+								playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+								PRINT_DEBUG("3 dup ack %u, %p\n", this_ack_seq, playback_ptr);
+								if(playback_ptr)
+								{
+									retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
+									kfree(playback_ptr);
+								}
+							}
+							/*else if(this_tcp_info->dup_ack_counter > 2 * MAX_FLYING_PACKET)
 							{
 								this_tcp_info->dup_ack_counter = 0;
-								retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
-							}
+								this_tcp_info->flying_packet_count = 0;
+							}*/
 						}
 						return 0;
-                    }
-                    if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
-                    {
-                        playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
-                        this_tcp_info->window_current = respond_window;
-                        retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
-                    }
-                }
-                else if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
-                    setup_playback_ptr(this_tcp_info->send_wnd_right_dege, this_tcp_info);
+					}
+					if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+					{
+						this_tcp_info->window_current = respond_window;
+						playback_ptr = find_retransmit_ptr(this_ack_seq, this_tcp_info);
+						if(playback_ptr)
+						{
+							retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
+							kfree(playback_ptr);
+						}
+					}
+				}
+				else
+				{
+					this_tcp_info->flying_packet_count = 0;
+					if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+						setup_playback_ptr(this_tcp_info->send_wnd_right_dege, this_tcp_info);
+				}
             }
         }
         else
@@ -377,7 +396,8 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         }
         set_tcp_state ( NULL, skb );
 //from_mirror_respond_mirror:
-		pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
+//		if(this_tcp_info->dup_ack_counter >= 3)
+			pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
 		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && !tcp_header->syn && ntohl(tcp_header->seq) < this_tcp_info->ackseq_last_playback)
 		{
 			PRINT_DEBUG("[%s] ack this packet: state: state: %d, data_size: %zu, last_play: %u\n", __func__, this_tcp_info->state, data_size, this_tcp_info->ackseq_last_playback);
@@ -395,7 +415,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
     packet_buffer_t* packet_buf = NULL;
     struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
-    struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_ATOMIC); 
+    struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_KERNEL); 
 
 //    PRINT_DEBUG("into function: %s\n", __func__);
 
@@ -441,15 +461,22 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
         bd->conn_info = this_tcp_info;
 		bd->skb = skb_mod;
         pbn->seq_num = ntohl(tcp_header->seq);
-        pbn->seq_num_next = (pbn->seq_num + data_size) % U32_MAX;
+        pbn->seq_num_next = (pbn->seq_num + data_size);
         pbn->opt_key = get_tsval(skb_mod);
         pbn->bd = bd;
         pbn->barrier = 0;
         //add_data ( packet_buf, bd );
 ///        printk("[%s] tcp_header->seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->seq_last_ack);
 ///        printk("[%s] tcp_header->ack_seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info));
-        if(ntohl(tcp_header->seq) >= this_tcp_info->seq_last_ack || ntohl(tcp_header->ack_seq) >= seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))
-            pkt_buffer_insert ( pbn, packet_buf );
+		if(ntohl(tcp_header->seq) >= this_tcp_info->seq_last_ack || ntohl(tcp_header->ack_seq) >= seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))
+			pkt_buffer_insert ( pbn, packet_buf );
+		else
+		{
+			kfree(pbn->bd->p);
+			kfree_skb(pbn->bd->skb);
+			kfree(pbn->bd);
+			kfree(pbn);
+		}
 
         switch ( tcp_state_get(&conn_info_set, ip, client_port) )
         {
@@ -517,7 +544,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = (bn->seq_num + data_size + (tcp_header->syn || tcp_header->fin)) % U32_MAX;
+            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
             bn->opt_key = get_tsval(skb);
             compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);

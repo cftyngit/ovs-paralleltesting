@@ -13,7 +13,7 @@
 #include "../commom.h"
 
 #if DEBUG==1
-#define PRINT_DEBUG(str, ...)	do {net_dbg_ratelimited("[%s]: " str, __func__, ##__VA_ARGS__);} while (0)
+#define PRINT_DEBUG(str, ...)	do {printk(KERN_DEBUG "[%s]: " str, __func__, ##__VA_ARGS__);} while (0)
 #else
 #define PRINT_DEBUG(str, ...)	do {} while (0)
 #endif

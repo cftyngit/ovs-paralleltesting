@@ -7,7 +7,7 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
     struct list_head *iterator;
     //u32 last_seq_next = head->prev ? list_entry(head->prev, struct buffer_node, list)->seq_num_next : 0;
 	struct list_head* prev = NULL;
-	spin_lock(&(buffer->compare_lock));
+	spin_lock_bh(&(buffer->compare_lock));
     if(list_empty(head))
     {
         list_add(&bn->list, head);
@@ -26,7 +26,7 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 	else
 		PRINT_ERROR("prev: %p, seq_next: %u, ite_seq_next: %u\n", prev, bn->seq_num_next, list_entry(prev, struct buffer_node, list)->seq_num);
 exit:
-	spin_unlock(&(buffer->compare_lock));
+	spin_unlock_bh(&(buffer->compare_lock));
     return 0;
 }
 
@@ -46,7 +46,7 @@ struct data_node* compare_buffer_getblock(struct compare_buffer* buffer)
 		PRINT_DEBUG("[%s] list_empty\n", __func__);
 		return NULL;
 	}
-	spin_lock(&(buffer->compare_lock));
+	spin_lock_bh(&(buffer->compare_lock));
 	if(NULL == buffer->compare_head)
 	{
 		PRINT_DEBUG("[%s] compare_head = NULL\n", __func__);
@@ -64,7 +64,7 @@ struct data_node* compare_buffer_getblock(struct compare_buffer* buffer)
 			buffer->compare_head = next_item;
 		}
 	}
-	spin_unlock(&(buffer->compare_lock));
+	spin_unlock_bh(&(buffer->compare_lock));
 	return ret;
 }
 
@@ -72,7 +72,7 @@ size_t compare_buffer_consume(size_t size, struct compare_buffer* buffer)
 {
 	size_t ret = 0;
 	struct data_node* target = compare_buffer_getblock(buffer);
-	spin_lock(&(buffer->compare_lock));
+	spin_lock_bh(&(buffer->compare_lock));
 	if(NULL == target)
 		goto exit;
 
@@ -100,7 +100,7 @@ size_t compare_buffer_consume(size_t size, struct compare_buffer* buffer)
 		}
 	}
 exit:
-	spin_unlock(&(buffer->compare_lock));
+	spin_unlock_bh(&(buffer->compare_lock));
 	return ret;
 }
 

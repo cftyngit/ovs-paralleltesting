@@ -11,8 +11,13 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	struct list_head* head = NULL;
 	struct list_head *iterator;
 	struct list_head* prev = NULL;
+	struct pkt_buffer_node* pbn_i = NULL;
+	struct pkt_buffer_node* pbn_p = NULL;
+	u64 pbn_seq = (u64)pbn->opt_key << 32 | pbn->seq_num;
+// 	u64 pbn_seq_n = (u64)pbn->opt_key << 32 | pbn->seq_num_next;
+//	u64 pbn_i_seq = 0, pbn_i_seq_n = 0, pbn_p_seq = 0, pbn_p_seq_n = 0;
 
-	spin_lock(&pbuf->packet_lock);
+	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
 	{
@@ -22,18 +27,82 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 
 	list_for_each_prev(iterator, head)
 	{
-		if(list_entry(iterator, struct pkt_buffer_node, list)->seq_num_next <= pbn->seq_num)
-			break;
-
+		struct pkt_buffer_node* tmp = list_entry(iterator, struct pkt_buffer_node, list);
+		if(abs(tmp->seq_num - pbn->seq_num) > U32_MAX>>1)
+		{
+			u64 iter_seq_n = (u64)tmp->opt_key << 32 | tmp->seq_num_next;
+			if(iter_seq_n <= pbn_seq)
+				break;
+		}
+		else
+		{
+			if(tmp->seq_num_next <= pbn->seq_num)
+				break;
+		}
 		prev = iterator;
 	}
-// 	if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num)
-// 		list_add(&pbn->list, iterator);
-// 	else
-// 		printk("[%s] prev: %p, seq_next: %u, ite_seq_next: %u\n", __func__, prev, pbn->seq_num_next, list_entry(prev, struct pkt_buffer_node, list)->seq_num);
+//	printk("[%s] pbn: (%u, %u, %u)\n", __func__, pbn->opt_key, pbn->seq_num, pbn->seq_num_next);
+	/**
+	 *       seq_num_next     seq_num
+	 *          v               v
+	 * ----------               ------
+	 * |iterator|               |prev|
+	 * ----------               ------
+	 */
+	/**
+	 * at tail of queue: insert
+	 */
+	if(!prev)
+		goto insert;
+	
+	pbn_i = list_entry(iterator, struct pkt_buffer_node, list);
+	pbn_p = list_entry(prev, struct pkt_buffer_node, list);
+// 	pbn_i_seq = (u64)pbn_i->opt_key << 32 | pbn_i->seq_num;
+// 	pbn_i_seq_n = (u64)pbn_i->opt_key << 32 | pbn_i->seq_num_next;
+// 	pbn_p_seq = (u64)pbn_p->opt_key << 32 | pbn_p->seq_num;
+// 	pbn_p_seq_n = (u64)pbn_p->opt_key << 32 | pbn_p->seq_num_next;
+	/**
+	 * no spaces between inerator and prev: free
+	 */
+	if(abs(pbn_p->seq_num - pbn_i->seq_num_next) < U32_MAX>>1 && pbn_i->seq_num_next >= pbn_p->seq_num)
+		goto free;
+	/**
+	 * pbn overlap with iterator or prev: free
+	 */
+	if(abs(pbn->seq_num_next - pbn_i->seq_num_next) < U32_MAX>>1 && pbn_i->seq_num_next >= pbn->seq_num_next)
+		goto free;
+	if(abs(pbn_p->seq_num - pbn->seq_num) < U32_MAX>>1 && pbn_p->seq_num <= pbn->seq_num)
+		goto free;
+	/*
+	if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num || pbn->seq_num_next < list_entry(prev, struct pkt_buffer_node, list)->seq_num_next)
+	{
+		list_add(&pbn->list, iterator);
+	}
+	else
+	{
+		struct pkt_buffer_node* tmp = list_entry(prev, struct pkt_buffer_node, list);
+		printk("[%s] prev: %p (%u, %u), pbn: (%u, %u)\n", __func__, prev, tmp->seq_num, tmp->seq_num_next, pbn->seq_num, pbn->seq_num_next);
+
+		kfree(pbn->bd->p);
+		kfree_skb(pbn->bd->skb);
+		kfree(pbn->bd);
+		kfree(pbn);
+	}*/
+//	list_add(&pbn->list, iterator);
+	
+insert:
+//	printk("[%s] insert: iter: (%llu, %llu), pbn: (%llu, %llu), prev: (%llu, %llu)\n", __func__, pbn_i_seq, pbn_i_seq_n, pbn_seq, pbn_seq_n, pbn_p_seq, pbn_p_seq_n);
 	list_add(&pbn->list, iterator);
+	goto out;
+free:
+	printk("[%s] free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", __func__, pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
+	kfree(pbn->bd->p);
+	kfree_skb(pbn->bd->skb);
+	kfree(pbn->bd);
+	kfree(pbn);
+	goto out;
 out:
-	spin_unlock(&pbuf->packet_lock);
+	spin_unlock_bh(&pbuf->packet_lock);
 	return 0;
 }
 
@@ -43,18 +112,19 @@ struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf)
 	struct list_head* pos = NULL;
 	struct buf_data *bd = NULL;
 
-	spin_lock(&pbuf->packet_lock);
+	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
-		return NULL;
+		goto out;
 
 	pos = (head)->next;
 	if(list_entry(pos, struct pkt_buffer_node, list)->barrier)
-		return NULL;
+		goto out;
 
 	bd = list_entry(pos, struct pkt_buffer_node, list)->bd;
 	list_del(pos);
-	spin_unlock(&pbuf->packet_lock);
+out:
+	spin_unlock_bh(&pbuf->packet_lock);
 	return bd;
 }
 
@@ -64,7 +134,7 @@ struct buf_data* pkt_buffer_peek_data(packet_buffer_t* pbuf)
 	struct list_head* pos = NULL;
 	struct buf_data *bd = NULL;
 
-	spin_lock(&pbuf->packet_lock);
+	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
 		goto out;
@@ -75,7 +145,7 @@ struct buf_data* pkt_buffer_peek_data(packet_buffer_t* pbuf)
 
 	bd = list_entry(pos, struct pkt_buffer_node, list)->bd;
 out:
-	spin_unlock(&pbuf->packet_lock);
+	spin_unlock_bh(&pbuf->packet_lock);
 	return bd;
 }
 
@@ -86,7 +156,7 @@ int pkt_buffer_barrier_add(packet_buffer_t* pbuf)
 	struct pkt_buffer_node* pbn = NULL;
 	int ret = -1;
 
-	spin_lock(&pbuf->packet_lock);
+	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
 		goto out;
@@ -95,7 +165,7 @@ int pkt_buffer_barrier_add(packet_buffer_t* pbuf)
 	pbn = list_entry(pos, struct pkt_buffer_node, list);
 	ret = ++pbn->barrier;
 out:
-	spin_unlock(&pbuf->packet_lock);
+	spin_unlock_bh(&pbuf->packet_lock);
 	return ret;
 }
 
@@ -106,7 +176,7 @@ int pkt_buffer_barrier_remove(packet_buffer_t* pbuf)
 	struct pkt_buffer_node* pbn = NULL;
 	int ret = -1;
 
-	spin_lock(&pbuf->packet_lock);
+	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
 		goto out;
@@ -118,7 +188,7 @@ int pkt_buffer_barrier_remove(packet_buffer_t* pbuf)
 	else
 		ret = pbn->barrier;
 out:
-	spin_unlock(&pbuf->packet_lock);
+	spin_unlock_bh(&pbuf->packet_lock);
 	return ret;    
 }
 
@@ -129,7 +199,7 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 	struct pkt_buffer_node *pbn = NULL;
 	int ret = 0;
 
-	if(!spin_trylock(&pbuf->packet_lock))
+	if(!spin_trylock_bh(&pbuf->packet_lock))
 		return -1;
 
 	head = &pbuf->buffer_head;
@@ -156,7 +226,7 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 		
 	}
 out:
-	spin_unlock(&pbuf->packet_lock);
+	spin_unlock_bh(&pbuf->packet_lock);
 	return ret;
 }
 

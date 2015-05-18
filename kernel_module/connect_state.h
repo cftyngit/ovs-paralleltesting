@@ -55,6 +55,7 @@ struct tcp_conn_info
     u16 mirror_port;
     u8 window_scale;
     u8 dup_ack_counter;
+	int flying_packet_count;
 };
 
 #define TCP_CONN_INFO_INIT \
@@ -102,7 +103,7 @@ struct host_conn_info_set
 };
 
 #define HOST_CONN_INFO_SET_INIT   {           \
-    .conn_info_set = RADIX_TREE_INIT(GFP_ATOMIC), \
+    .conn_info_set = RADIX_TREE_INIT(GFP_KERNEL), \
     .count = 0,                            \
 }
 

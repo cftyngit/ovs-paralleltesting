@@ -114,7 +114,7 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 	default:
 		return -1;
 	}
-	spin_lock(lock);
+	spin_lock_bh(lock);
 	/*
 	 * compare at kernel
 	 */
@@ -162,7 +162,7 @@ int do_compare(struct connection_info* conn_info, struct compare_buffer* buffer1
 		}
 		
 	}
-	spin_unlock(lock);
+	spin_unlock_bh(lock);
 	return 0;
 }
 

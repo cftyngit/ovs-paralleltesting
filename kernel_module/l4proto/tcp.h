@@ -10,6 +10,8 @@
 
 #define FAKE_SEQ 4321
 #define FAKE_TSVAL 123
+#define FAST_RETRANS_COUNT 3
+#define MAX_FLYING_PACKET (20*FAST_RETRANS_COUNT)
 
 struct retransmit_info
 {
