@@ -181,9 +181,10 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
 	case IPPROTO_TCP:
 	{
 		struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
-		spin_lock_bh(&(this_tcp_info->playback_ptr_lock));
+		unsigned long flags = 0;
+		spin_lock_irqsave(&(this_tcp_info->playback_ptr_lock), flags);
 		tcp_playback_packet( ip, client_port, cause);
-		spin_unlock_bh(&(this_tcp_info->playback_ptr_lock));
+		spin_unlock_irqrestore(&(this_tcp_info->playback_ptr_lock), flags);
 		break;
 	}
     default:
@@ -386,7 +387,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         /*
          * record lastest packet seq number
          */
-        if(ntohl(tcp_header->seq) >= this_tcp_info->seq_current)
+        if(ntohl(tcp_header->seq) >= this_tcp_info->seq_next)
         {
             if ( tcp_header->syn || tcp_header->fin )
                 data_size = data_size + 1;

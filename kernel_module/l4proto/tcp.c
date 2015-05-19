@@ -670,7 +670,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 //		PRINT_DEBUG("line %d\n", __LINE__);
 		return 0;
 	}
-	spin_lock_bh(&packet_buf->packet_lock);
+	spin_lock(&packet_buf->packet_lock);
     do
     {
         int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
@@ -680,6 +680,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         size_t data_size = 0;
         struct list_head* pkt_ptr_tmp = this_tcp_info->playback_ptr;
         struct iphdr* ip_header = NULL;
+		u32 skb_nseq = 0;
+		u32 log_nseq = 0;
 
         if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
 		{
@@ -708,7 +710,11 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
             seq_tmp = ntohl ( tcp_header->ack_seq ) + ( seq_mirror - seq_server );
         else
             seq_tmp = ntohl ( tcp_header->ack_seq ) - ( seq_server - seq_mirror );
-
+		/**
+		 * if the packet that we want to send has a ACK asq > lastest seq from mirror
+		 * means we can't send this packet right now, 
+		 * we build an ack to mirror to prevent unwanted retransmission from mirror
+		 */
         if(cause != CAUSE_BY_RETRAN && seq_tmp > this_tcp_info->seq_next)
         {
             struct sk_buff* tmp = NULL;
@@ -821,35 +827,17 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				tcp_header->seq = new_seq;
 			}
 		}
-		/**
-		 * update connection info
+		skb_nseq = (ntohl(tcp_header->seq) + (u32)data_size);
+		log_nseq = (this_tcp_info->seq_last_send + (u32)this_tcp_info->last_send_size);
+		/*
+		 * make sure the ready-to-send packet is continus with previcious send packets
 		 */
-		if(1)
+		if(CAUSE_BY_RETRAN != cause && data_size && ntohl(tcp_header->seq) > log_nseq)
 		{
-			u32 skb_nseq = (ntohl(tcp_header->seq) + (u32)data_size);
-			u32 log_nseq = (this_tcp_info->seq_last_send + (u32)this_tcp_info->last_send_size);
-			if(CAUSE_BY_RETRAN != cause && data_size && ntohl(tcp_header->seq) > log_nseq)
-			{
-				printk("skb seq: %u, log seq: (%u, %zu)\n", ntohl(tcp_header->seq), this_tcp_info->seq_last_send, this_tcp_info->last_send_size);
-				kfree_skb(skb_mod);
-				break;
-			}
-			if(ntohl(tcp_header->seq) >= this_tcp_info->seq_last_send ||
-				(ntohl(tcp_header->seq) <= this_tcp_info->seq_last_send && skb_nseq > log_nseq))
-			{
-				u32 data_size_f = data_size;
-				if(tcp_header->syn || tcp_header->fin)
-					data_size_f++;
-
-				this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
-				this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
-				this_tcp_info->last_send_size = data_size_f;
-				this_tcp_info->window_current -= data_size;
-			}
+			printk("skb seq: %u, log seq: (%u, %zu)\n", ntohl(tcp_header->seq), this_tcp_info->seq_last_send, this_tcp_info->last_send_size);
+			kfree_skb(skb_mod);
+			break;
 		}
-		if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
-			this_tcp_info->tsval_last_send = get_tsval(skb_mod);
-
 		setup_options(skb_mod, this_tcp_info);
 		pd_modify_ip_mac ( skb_mod );
 		if(this_tcp_info->mirror_port)
@@ -904,19 +892,39 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 					info->tcp_info = this_tcp_info;
 					info->bd = bd;
 					info->timer = &bd->timer;
-					spin_lock_bh(&(this_tcp_info->retranstimer_lock));
+					spin_lock(&(this_tcp_info->retranstimer_lock));
 					if(try_to_del_timer_sync(&bd->timer) < 0)
-						goto setup_timer_end;
-
+					{
+						bd->retrans_times = 0;
+//						kfree(info);
+//						goto setup_timer_end;
+					}
 					init_timer(&(bd->timer));
 					setup_timer(&(bd->timer), retransmit_by_timer, (unsigned long)info);
 					mod_timer(&(bd->timer), jiffies + (HZ << bd->retrans_times));
 setup_timer_end:
-					spin_unlock_bh(&(this_tcp_info->retranstimer_lock));
+					spin_unlock(&(this_tcp_info->retranstimer_lock));
 				}
 			}
 		}
+		/*
+		 * update connection state
+		 */
 		setup_playback_ptr(pkt_ptr_tmp, this_tcp_info);
+		if(ntohl(tcp_header->seq) >= this_tcp_info->seq_last_send ||
+			(ntohl(tcp_header->seq) <= this_tcp_info->seq_last_send && skb_nseq > log_nseq))
+		{
+			u32 data_size_f = data_size;
+			if(tcp_header->syn || tcp_header->fin)
+				data_size_f++;
+
+			this_tcp_info->seq_last_send = ntohl(tcp_header->seq);
+			this_tcp_info->ackseq_last_playback = ntohl(tcp_header->ack_seq);
+			this_tcp_info->last_send_size = data_size_f;
+			this_tcp_info->window_current -= data_size;
+		}
+		if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
+			this_tcp_info->tsval_last_send = get_tsval(skb_mod);
 		/*
 		 * setup send_window's right edge
 		 */
@@ -934,7 +942,7 @@ setup_timer_end:
 //		if(data_size && ++data_packet_counter > 6)
 //			break;
     }while ( 0 == should_break && 0 == state_reset /*&& this_tcp_info->dup_ack_counter <= 1*/ );
-	spin_unlock_bh(&packet_buf->packet_lock);
+	spin_unlock(&packet_buf->packet_lock);
     return 0;
 }
 
@@ -1086,15 +1094,16 @@ void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this
 int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, struct tcp_conn_info* this_tcp_info)
 {
 	int ret = 0;
+	unsigned long flags = 0;
 	if(NULL == ptr)
 	{
 		PRINT_ERROR("retrans ptr is NULL");
 		return -1;
 	}
-	spin_lock_bh(&(this_tcp_info->playback_ptr_lock));
+	spin_lock_irqsave(&(this_tcp_info->playback_ptr_lock), flags);
 	setup_playback_ptr(ptr, this_tcp_info);
 	ret = tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
-	spin_unlock_bh(&(this_tcp_info->playback_ptr_lock));
+	spin_unlock_irqrestore(&(this_tcp_info->playback_ptr_lock), flags);
 	return ret;
 }
 

@@ -28,34 +28,46 @@ struct commom_buffers
 
 struct tcp_conn_info
 {
-    struct commom_buffers buffers;
-    struct list_head* playback_ptr;
-    struct list_head* send_wnd_right_dege;
-    spinlock_t playback_ptr_lock;
+	struct commom_buffers buffers;
+	struct list_head* playback_ptr;
+	struct list_head* send_wnd_right_dege;
+	spinlock_t playback_ptr_lock;
 	spinlock_t compare_lock;
 	spinlock_t retranstimer_lock;
-    u32 seq_rmhost;
-    u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
-    u32 seq_server;
-    u32 seq_mirror;
-    u32 seq_fin;
-    u32 seq_current;
-    u32 seq_next;                   //next seq number that we need to ack
-    u32 seq_last_send;
-    u32 seq_dup_ack;
+	/*
+	 * information about rmhost, target, mirror
+	 */
+	u32 seq_rmhost;
+	u32 seq_rmhost_fake;            //in "mirror is client" case used to determine whether OVS has respond fake SYN-ACK
+	u32 seq_server;
+	u32 seq_mirror;
+	u32 seq_fin;
+	u16 mirror_port;
+	u8 window_scale;
+	/*
+	 * information in transmission
+	 */
+	u32 seq_current;				//the biggest seq number receive from mirror (seem useless)
+	u32 seq_next;                   //next seq number that we need to ack
+	u32 seq_last_send;
+	u32 ackseq_last_from_target;
+	u32 ackseq_last_playback;
+	int state;
+	u32 window_current;             //remain window size
+	size_t last_send_size;          //used in calculate remain window size from mirror ACK
+	/*
+	 * about fast retransmission
+	 */
+	u32 seq_dup_ack;
+	u8 dup_ack_counter;
+	int flying_packet_count;
+	/*
+	 * time stamps
+	 */
     u32 timestamp_last_from_target;
-    u32 ackseq_last_from_target;
-    u32 ackseq_last_playback;
-    int state;
-    u32 window_current;             //remain window size
-    size_t last_send_size;          //used in calculate remain window size from mirror ACK
     u32 tsval_current;
     u32 tsval_last_send;
     u32 seq_last_ack;               //last ack from mirror
-    u16 mirror_port;
-    u8 window_scale;
-    u8 dup_ack_counter;
-	int flying_packet_count;
 };
 
 #define TCP_CONN_INFO_INIT \
