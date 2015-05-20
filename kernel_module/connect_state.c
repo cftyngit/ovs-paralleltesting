@@ -113,7 +113,9 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
     get_proto_state = radix_tree_lookup(&(get_conn_info->tcp_info_set), port);
     if(get_proto_state)
     {
-        pkt_buffer_cleanup(&(get_proto_state->buffers.packet_buffer));
+        if(pkt_buffer_cleanup(&(get_proto_state->buffers.packet_buffer)))
+			return 1;
+
         radix_tree_delete(&(get_conn_info->tcp_info_set), port);
         kfree(get_proto_state);
         get_conn_info->tcp_info_count--;

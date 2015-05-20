@@ -213,7 +213,7 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
         
 		pbn = list_entry(iterator, struct pkt_buffer_node, list);
 		if((ret = try_to_del_timer_sync(&pbn->bd->timer)) < 0)
-			goto out;
+			continue;
 
 		list_del(iterator);
 		kfree(pbn->bd->p);
@@ -223,7 +223,6 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 		kfree(pbn->bd);
 		pbn->bd = NULL;
 		kfree(pbn);
-		
 	}
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
@@ -247,8 +246,6 @@ struct buf_data* pkt_buffer_peek_data_from_ptr(packet_buffer_t* pbuf, struct lis
 	{
 		if(pbn && pbn->bd != NULL)
 		{
-//			struct buf_data* ret_bd = kmalloc(sizeof(struct buf_data), GFP_ATOMIC);
-//			memmove(ret_bd, pbn->bd, sizeof(struct buf_data));
 			*ptr = this_ptr->next;
 			return pbn->bd;
 		}

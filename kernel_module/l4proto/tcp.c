@@ -1121,7 +1121,6 @@ void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this
 int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, struct tcp_conn_info* this_tcp_info)
 {
 	int ret = 0;
-	unsigned long flags = 0;
 	if(NULL == ptr)
 	{
 		PRINT_ERROR("retrans ptr is NULL");
@@ -1129,7 +1128,6 @@ int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, st
 	}
 	setup_playback_ptr(ptr, this_tcp_info);
 	ret = tcp_playback_packet(ip, port, CAUSE_BY_RETRAN);
-//	spin_unlock_irqrestore(&(this_tcp_info->playback_ptr_lock), flags);
 	return ret;
 }
 

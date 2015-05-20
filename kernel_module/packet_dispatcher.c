@@ -180,7 +180,6 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
         break;
 	case IPPROTO_TCP:
 	{
-		struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
 		tcp_playback_packet( ip, client_port, cause);
 		break;
 	}
