@@ -20,7 +20,7 @@ static inline void init_tcp_info(struct tcp_conn_info* tcp_info)
     init_buffers(&(tcp_info->buffers));
     tcp_info->playback_ptr = &(tcp_info->buffers.packet_buffer.buffer_head);
     tcp_info->send_wnd_right_dege = &(tcp_info->buffers.packet_buffer.buffer_head);
-    spin_lock_init(&(tcp_info->playback_ptr_lock));
+    spin_lock_init(&(tcp_info->info_lock));
 	spin_lock_init(&(tcp_info->compare_lock));
 	spin_lock_init(&(tcp_info->retranstimer_lock));
 }

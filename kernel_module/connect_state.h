@@ -31,9 +31,10 @@ struct tcp_conn_info
 	struct commom_buffers buffers;
 	struct list_head* playback_ptr;
 	struct list_head* send_wnd_right_dege;
-	spinlock_t playback_ptr_lock;
+//	spinlock_t playback_ptr_lock;
 	spinlock_t compare_lock;
 	spinlock_t retranstimer_lock;
+	spinlock_t info_lock;
 	/*
 	 * information about rmhost, target, mirror
 	 */

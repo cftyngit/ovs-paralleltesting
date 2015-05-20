@@ -181,10 +181,7 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
 	case IPPROTO_TCP:
 	{
 		struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
-		unsigned long flags = 0;
-		spin_lock_irqsave(&(this_tcp_info->playback_ptr_lock), flags);
 		tcp_playback_packet( ip, client_port, cause);
-		spin_unlock_irqrestore(&(this_tcp_info->playback_ptr_lock), flags);
 		break;
 	}
     default:
