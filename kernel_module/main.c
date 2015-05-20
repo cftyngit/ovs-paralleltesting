@@ -21,7 +21,6 @@ static unsigned long target;
 
 static int __init lkm_init(void)
 {
-    //char *sym_name = "ovs_dp_process_received_packet";
     request_module("openvswitch.ko");
     target = kallsyms_lookup_name(ovs_hook_sym_name);
 

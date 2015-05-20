@@ -862,7 +862,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		 */
 		if(CAUSE_BY_RETRAN != cause && data_size && ntohl(tcp_header->seq) > log_nseq)
 		{
-			printk("skb seq: %u, log seq: (%u, %zu)\n", ntohl(tcp_header->seq), this_tcp_info->seq_last_send, this_tcp_info->last_send_size);
+			PRINT_INFO("skb seq: %u, log seq: (%u, %zu)\n", ntohl(tcp_header->seq), this_tcp_info->seq_last_send, this_tcp_info->last_send_size);
 			kfree_skb(skb_mod);
 			break;
 		}
