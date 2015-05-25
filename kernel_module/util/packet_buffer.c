@@ -95,7 +95,7 @@ insert:
 	list_add(&pbn->list, iterator);
 	goto out;
 free:
-	PRINT_INFO("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", __func__, pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
+	PRINT_INFO("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
 	kfree(pbn->bd->p);
 	kfree_skb(pbn->bd->skb);
 	kfree(pbn->bd);
