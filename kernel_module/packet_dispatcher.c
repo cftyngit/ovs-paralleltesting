@@ -474,7 +474,6 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 			kfree(pbn->bd);
 			kfree(pbn);
 		}
-
         switch ( tcp_state_get(&conn_info_set, ip, client_port) )
         {
         case TCP_STATE_SYN_RCVD:
@@ -531,30 +530,66 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
         unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_TARGET};
+		u32 packet_tsval = get_tsval(skb);
+		u32 info_timestamp_last_from_target = 0;
+		u32 info_seq_server = 0;
+		u32 info_ackseq_last_from_target = 0;
+		struct other_args* info_other_args_from_target;
+		struct sk_buff* info_last_ack_send_from_target;
+
+		spin_lock_bh(&this_tcp_info->info_lock);
+		info_timestamp_last_from_target = this_tcp_info->timestamp_last_from_target;
+		info_seq_server = this_tcp_info->seq_server;
+		info_ackseq_last_from_target = this_tcp_info->ackseq_last_from_target;
+		info_other_args_from_target = this_tcp_info->other_args_from_target;
+		info_last_ack_send_from_target = this_tcp_info->last_ack_send_from_target;
+		spin_unlock(&this_tcp_info->info_lock);
+
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
-///			printk("[%s] skb->len: %d, skb->data_len: %d\n", __func__, skb->len, skb->data_len);
-            //memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
-            //memmove ( data, (void *) skb->data + (tcp_header->doff*4 + ip_header->ihl*4 + sizeof(struct ethhdr)), data_size );
 			skb_copy_bits(skb, (tcp_header->doff*4 + ip_header->ihl*4 + sizeof(struct ethhdr)), data, data_size);
 			bn->payload.data = data;
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
             bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
-            bn->opt_key = get_tsval(skb);
+            bn->opt_key = packet_tsval;
             compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
-        if (get_tsval(skb) > this_tcp_info->timestamp_last_from_target)
-            this_tcp_info->ackseq_last_from_target = ntohl(tcp_header->ack_seq);
-
+		if (before(info_timestamp_last_from_target, packet_tsval))
+		{
+			info_ackseq_last_from_target = ntohl(tcp_header->ack_seq);
+			info_timestamp_last_from_target = packet_tsval;
+		}
+		if(tcp_header->ack)
+		{
+			info_other_args_from_target = kmalloc(sizeof_other_args, GFP_KERNEL);
+			memcpy(info_other_args_from_target, arg, sizeof_other_args);
+			info_last_ack_send_from_target = skb_clone(skb, GFP_ATOMIC);
+		}
         if ( tcp_header->syn )
         {
-            this_tcp_info->seq_server = ntohl ( tcp_header->seq );
+            info_seq_server = ntohl ( tcp_header->seq );
             if ( !tcp_header->ack && tcp_state_get(&conn_info_set, ip, client_port) == TCP_STATE_LISTEN )
                 tcp_state_set(&conn_info_set, ip, client_port, TCP_STATE_CLOSED);
         }
+
+		spin_lock_bh(&this_tcp_info->info_lock);
+		this_tcp_info->timestamp_last_from_target = info_timestamp_last_from_target;
+		this_tcp_info->seq_server = info_seq_server;
+		this_tcp_info->ackseq_last_from_target = info_ackseq_last_from_target;
+		if(this_tcp_info->other_args_from_target != info_other_args_from_target)
+		{
+			kfree(this_tcp_info->other_args_from_target);
+			this_tcp_info->other_args_from_target = info_other_args_from_target;
+		}
+		if(info_last_ack_send_from_target != this_tcp_info->last_ack_send_from_target)
+		{
+			kfree_skb(this_tcp_info->last_ack_send_from_target);
+			this_tcp_info->last_ack_send_from_target = info_last_ack_send_from_target;
+		}
+		spin_unlock(&this_tcp_info->info_lock);
     }
     return 0;
 }

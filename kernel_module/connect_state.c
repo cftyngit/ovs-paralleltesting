@@ -146,6 +146,10 @@ static void tcp_stat_cleanup(struct radix_tree_root* tcp_info_set)
 			compare_buffer_cleanup(&(tci->buffers.mirror_buffer));
 			compare_buffer_cleanup(&(tci->buffers.target_buffer));
 			radix_tree_delete(tcp_info_set, iter.index);
+			kfree(tci->other_args_from_target);
+			tci->other_args_from_target = NULL;
+			kfree_skb(tci->last_ack_send_from_target);
+			tci->last_ack_send_from_target = NULL;
 			kfree(tci);
 		}
 	}

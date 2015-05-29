@@ -750,7 +750,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         {
             struct sk_buff* tmp = NULL;
 			PRINT_DEBUG("seq_tmp: %u, seq_next: %u\n", seq_tmp, info_seq_next);
-            if( TCP_STATE_ESTABLISHED == info_state && info_ackseq_last_from_target >= ntohl(tcp_header->seq))
+            if( TCP_STATE_ESTABLISHED == info_state && after(info_ackseq_last_from_target, ntohl(tcp_header->seq)) )
             {
                 u32 target_ack_seq = 0;
                 if ( seq_mirror > seq_server )
@@ -1016,14 +1016,9 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
 			if( iterator == this_tcp_info->playback_ptr )
 				break;
 
-			if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+			if(pkt_buffer_delete(iterator, pbuf) != 0)
 				break;
-//			del_timer_sync(&pbn->bd->timer);
-			list_del(iterator);
-			kfree(pbn->bd->p);
-			kfree_skb(pbn->bd->skb);
-			kfree(pbn->bd);
-			kfree(pbn);
+
 			if(data_size && this_tcp_info->flying_packet_count)
 				this_tcp_info->flying_packet_count--;
 		}
@@ -1159,3 +1154,33 @@ exit:
 	kfree(info);
 }
 
+void packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
+{
+	struct sk_buff* send_skb = NULL;
+	struct sk_buff* ack_skb = NULL;
+	int node_count = this_tcp_info->buffers.packet_buffer.node_count;
+
+	if(node_count < PACKET_BUFFER_SOFT_LIMIT || this_tcp_info->last_ack_send_from_target == NULL)
+		return;
+
+	spin_lock_bh(&this_tcp_info->info_lock);
+	ack_skb = skb_clone (this_tcp_info->last_ack_send_from_target, GFP_ATOMIC);
+	spin_unlock_bh(&this_tcp_info->info_lock);
+
+	if(node_count > PACKET_BUFFER_HARD_LIMIT)
+	{
+		send_skb = skb_copy (ack_skb, GFP_ATOMIC);
+		tcp_hdr(send_skb)->window = 0;
+		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+	}
+	else if(node_count > PACKET_BUFFER_SOFT_LIMIT)
+	{
+		send_skb = skb_clone (ack_skb, GFP_ATOMIC);
+		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+		send_skb = skb_clone (ack_skb, GFP_ATOMIC);
+		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+		send_skb = skb_clone (ack_skb, GFP_ATOMIC);
+		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+	}
+	kfree_skb(ack_skb);
+}

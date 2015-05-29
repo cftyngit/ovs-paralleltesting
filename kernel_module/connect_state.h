@@ -56,6 +56,8 @@ struct tcp_conn_info
 	int state;
 	u32 window_current;             //remain window size
 	size_t last_send_size;          //used in calculate remain window size from mirror ACK
+	struct sk_buff* last_ack_send_from_target;
+	struct other_args* other_args_from_target;
 	/*
 	 * about fast retransmission
 	 */

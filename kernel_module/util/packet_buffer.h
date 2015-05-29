@@ -30,10 +30,12 @@ typedef struct packet_buffer_s
 {
 	struct list_head buffer_head;
 	spinlock_t packet_lock;
+	int node_count;
 }packet_buffer_t;
 
 void pkt_buffer_init(packet_buffer_t* pbuf);
 int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf);
+int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf);
 int pkt_buffer_isempty(packet_buffer_t* pbuf);
 
 struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf);

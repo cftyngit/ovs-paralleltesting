@@ -2,6 +2,7 @@
 
 inline void pkt_buffer_init(packet_buffer_t* pbuf)
 {
+	pbuf->node_count = 0;
 	INIT_LIST_HEAD(&(pbuf->buffer_head));
 	spin_lock_init(&(pbuf->packet_lock));
 }
@@ -19,11 +20,9 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 
 	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
+	iterator = head;
 	if(list_empty(head))
-	{
-		list_add(&pbn->list, head);
-		goto out;
-	}
+		goto insert;
 
 	list_for_each_prev(iterator, head)
 	{
@@ -41,7 +40,6 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 		}
 		prev = iterator;
 	}
-//	printk("[%s] pbn: (%u, %u, %u)\n", __func__, pbn->opt_key, pbn->seq_num, pbn->seq_num_next);
 	/**
 	 *       seq_num_next     seq_num
 	 *          v               v
@@ -58,10 +56,6 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	if(head == iterator)
 		goto insert;
 	pbn_i = list_entry(iterator, struct pkt_buffer_node, list);
-// 	pbn_i_seq = (u64)pbn_i->opt_key << 32 | pbn_i->seq_num;
-// 	pbn_i_seq_n = (u64)pbn_i->opt_key << 32 | pbn_i->seq_num_next;
-// 	pbn_p_seq = (u64)pbn_p->opt_key << 32 | pbn_p->seq_num;
-// 	pbn_p_seq_n = (u64)pbn_p->opt_key << 32 | pbn_p->seq_num_next;
 	/**
 	 * no spaces between inerator and prev: free
 	 */
@@ -74,25 +68,9 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 		goto free;
 	if(abs(pbn_p->seq_num - pbn->seq_num) < U32_MAX>>1 && pbn_p->seq_num <= pbn->seq_num)
 		goto free;
-	/*
-	if(!prev || pbn->seq_num_next <= list_entry(prev, struct pkt_buffer_node, list)->seq_num || pbn->seq_num_next < list_entry(prev, struct pkt_buffer_node, list)->seq_num_next)
-	{
-		list_add(&pbn->list, iterator);
-	}
-	else
-	{
-		struct pkt_buffer_node* tmp = list_entry(prev, struct pkt_buffer_node, list);
-		printk("[%s] prev: %p (%u, %u), pbn: (%u, %u)\n", __func__, prev, tmp->seq_num, tmp->seq_num_next, pbn->seq_num, pbn->seq_num_next);
-
-		kfree(pbn->bd->p);
-		kfree_skb(pbn->bd->skb);
-		kfree(pbn->bd);
-		kfree(pbn);
-	}*/
-//	list_add(&pbn->list, iterator);
-	
 insert:
 	list_add(&pbn->list, iterator);
+	pbuf->node_count++;
 	goto out;
 free:
 	PRINT_INFO("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
@@ -111,6 +89,7 @@ struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf)
 	struct list_head* head = NULL;
 	struct list_head* pos = NULL;
 	struct buf_data *bd = NULL;
+	struct pkt_buffer_node* pbn;
 
 	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
@@ -118,11 +97,14 @@ struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf)
 		goto out;
 
 	pos = (head)->next;
-	if(list_entry(pos, struct pkt_buffer_node, list)->barrier)
+	pbn = list_entry(pos, struct pkt_buffer_node, list);
+	if(pbn->barrier)
 		goto out;
 
-	bd = list_entry(pos, struct pkt_buffer_node, list)->bd;
+	bd = pbn->bd;
 	list_del(pos);
+	kfree(pbn);
+	pbuf->node_count--;
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
 	return bd;
@@ -212,17 +194,8 @@ int pkt_buffer_cleanup(packet_buffer_t* pbuf)
 			continue;
         
 		pbn = list_entry(iterator, struct pkt_buffer_node, list);
-		if((ret = try_to_del_timer_sync(&pbn->bd->timer)) < 0)
+		if((ret = pkt_buffer_delete(iterator, pbuf)) < 0)
 			continue;
-// 		del_timer_sync(&pbn->bd->timer);
-		list_del(iterator);
-		kfree(pbn->bd->p);
-		pbn->bd->p = NULL;
-		kfree_skb(pbn->bd->skb);
-		pbn->bd->skb = NULL;
-		kfree(pbn->bd);
-		pbn->bd = NULL;
-		kfree(pbn);
 	}
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
@@ -256,4 +229,24 @@ struct buf_data* pkt_buffer_peek_data_from_ptr(packet_buffer_t* pbuf, struct lis
 inline int pkt_buffer_isempty(packet_buffer_t* pbuf)
 {
 	return list_empty(&pbuf->buffer_head);
+}
+
+inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
+{
+	struct pkt_buffer_node *pbn = NULL;
+
+	if(pbuf == NULL || iterator == NULL || iterator == LIST_POISON1 || iterator == LIST_POISON2 || iterator == &pbuf->buffer_head)
+		return -1;
+
+	pbn = list_entry(iterator, struct pkt_buffer_node, list);
+	if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+		return -1;
+
+	list_del(iterator);
+	kfree(pbn->bd->p);
+	kfree_skb(pbn->bd->skb);
+	kfree(pbn->bd);
+	kfree(pbn);
+	pbuf->node_count--;
+	return 0;
 }
