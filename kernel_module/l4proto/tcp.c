@@ -435,7 +435,7 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 				if(opsize == TCPOLEN_TIMESTAMP)
 				{
 					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
-					if(tcp_info->tsval_last_send > pkt_tsval)
+					if(after(tcp_info->tsval_last_send, pkt_tsval))
 						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+0);
 
 					put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
@@ -595,7 +595,7 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     case TCP_STATE_FIN_WAIT1:
-        if ( skb_mirror && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
+        if ( skb_mirror && (after(ntohl ( tcp_header->ack_seq ), TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin) ) )
             tcp_state_set(&conn_info_set, ip, port, TCP_STATE_FIN_WAIT2);
     case TCP_STATE_FIN_WAIT2:
         if ( skb_mirror && tcp_header->fin )
@@ -611,14 +611,14 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     case TCP_STATE_TIME_WAIT:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
+        if ( skb_client && ( after(ntohl ( tcp_header->ack_seq ), TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin) ) )
         {
             tcp_state_reset(&conn_info_set, ip, port);
             state_reset = 1;
         }
         break;
     case TCP_STATE_CLOSE_WAIT1:
-        if ( skb_client && ( ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin ) )
+        if ( skb_client && (after(ntohl ( tcp_header->ack_seq ), TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin) ) )
             tcp_state_set(&conn_info_set, ip, port, TCP_STATE_CLOSE_WAIT2);
 
     case TCP_STATE_CLOSE_WAIT2:
@@ -636,7 +636,7 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     case TCP_STATE_LAST_ACK:
-        if ( skb_mirror && ntohl ( tcp_header->ack_seq ) > TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin )
+        if ( skb_mirror && after(ntohl ( tcp_header->ack_seq ), TCP_CONN_INFO(&conn_info_set, ip, port)->seq_fin) )
         {
             tcp_state_reset(&conn_info_set, ip, port);
             state_reset = 1;
@@ -674,7 +674,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 	spin_lock(&packet_buf->packet_lock);
     do
     {
-        int tcp_s = tcp_state_get(&conn_info_set, ip, client_port);
         u32 seq_server = 0;
         u32 seq_mirror = 0;
         u32 seq_tmp = 0;
@@ -694,6 +693,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		int info_flying_packet_count;
 		u32 info_seq_last_ack;
 		u32 info_seq_last_send;
+		unsigned char info_init;
 
 		spin_lock_irqsave(&this_tcp_info->info_lock, flags);
 		seq_server = this_tcp_info->seq_server;
@@ -710,11 +710,12 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		info_flying_packet_count = this_tcp_info->flying_packet_count;
 		info_seq_last_ack = this_tcp_info->seq_last_ack;
 		info_seq_last_send = this_tcp_info->seq_last_send;
+		info_init = this_tcp_info->init;
 		spin_unlock_irqrestore(&this_tcp_info->info_lock, flags);
 
 		pkt_ptr_tmp = info_playback_ptr;
 
-        if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == tcp_s || TCP_STATE_FIN_WAIT1 == tcp_s || TCP_STATE_CLOSED == tcp_s) )
+        if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == info_state || TCP_STATE_FIN_WAIT1 == info_state || TCP_STATE_CLOSED == info_state) )
 		{
 			PRINT_DEBUG("line %d\n", __LINE__);
 			break;
@@ -746,7 +747,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		 * means we can't send this packet right now, 
 		 * we build an ack to mirror to prevent unwanted retransmission from mirror
 		 */
-        if(cause != CAUSE_BY_RETRAN && seq_tmp > info_seq_next)
+        if(cause != CAUSE_BY_RETRAN && after(seq_tmp, info_seq_next))
         {
             struct sk_buff* tmp = NULL;
 			PRINT_DEBUG("seq_tmp: %u, seq_next: %u\n", seq_tmp, info_seq_next);
@@ -860,7 +861,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		/*
 		 * make sure the ready-to-send packet is continus with previcious send packets
 		 */
-		if(CAUSE_BY_RETRAN != cause && data_size && ntohl(tcp_header->seq) > log_nseq)
+		if(CAUSE_BY_RETRAN != cause && data_size && after(ntohl(tcp_header->seq), log_nseq))
 		{
 			PRINT_INFO("skb seq: %u, log seq: (%u, %zu)\n", ntohl(tcp_header->seq), this_tcp_info->seq_last_send, this_tcp_info->last_send_size);
 			kfree_skb(skb_mod);
@@ -907,7 +908,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			else
 				seq_target = info_seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
 
-			if(ntohl(tcp_header->seq) + data_size > seq_target)
+			if(after(ntohl(tcp_header->seq) + data_size, seq_target))
 			{
 				info = kmalloc(sizeof(struct retransmit_info), GFP_KERNEL); //free at retransmit_by_timer
 				if(info)
@@ -936,10 +937,13 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
 		spin_lock_irqsave(&this_tcp_info->info_lock, flags);
 		this_tcp_info->flying_packet_count = info_flying_packet_count;
-		if(ntohl(tcp_header->seq) >= info_seq_last_send ||
-			(ntohl(tcp_header->seq) <= info_seq_last_send && skb_nseq > log_nseq))
+		if( !(info_init & INIT_LAST_SEND) ||
+			ntohl(tcp_header->seq) == info_seq_last_send ||
+			after(ntohl(tcp_header->seq), info_seq_last_send) ||
+			(before(ntohl(tcp_header->seq), info_seq_last_send) && after(skb_nseq, log_nseq)))
 		{
 			u32 data_size_f = data_size;
+			this_tcp_info->init |= INIT_LAST_SEND;
 			if(tcp_header->syn || tcp_header->fin)
 				data_size_f++;
 
@@ -948,15 +952,17 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			this_tcp_info->last_send_size = data_size_f;
 			this_tcp_info->window_current -= data_size;
 		}
-		if(get_tsval(skb_mod) > this_tcp_info->tsval_last_send)
+		if(!(info_init & INIT_TSVAL) || after(get_tsval(skb_mod), this_tcp_info->tsval_last_send))
+		{
+			this_tcp_info->init |= INIT_TSVAL;
 			this_tcp_info->tsval_last_send = get_tsval(skb_mod);
-
+		}
 		/*
 		 * setup send_window's right edge
 		 */
 		pkt_ptr_tmp = this_tcp_info->send_wnd_right_dege;
 		bd_tmp = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
-		if(bd_tmp && ntohl(tcp_header->seq) >= ntohl(tcp_hdr(bd_tmp->skb)->seq))
+		if(bd_tmp && (ntohl(tcp_header->seq) == ntohl(tcp_hdr(bd_tmp->skb)->seq) || after(ntohl(tcp_header->seq), ntohl(tcp_hdr(bd_tmp->skb)->seq))))
 			this_tcp_info->send_wnd_right_dege = this_tcp_info->playback_ptr;
 		spin_unlock_irqrestore(&this_tcp_info->info_lock, flags);
 
@@ -1001,6 +1007,7 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
 		struct iphdr* ip_header = NULL;
 		u16 data_size = 0;
 		u16 data_size_f = 0;
+		u32 seq_next = 0;
 		pbn = list_entry(iterator, struct pkt_buffer_node, list);
 		ip_header = ip_hdr ( pbn->bd->skb );
 		tcp_header = tcp_hdr ( pbn->bd->skb );
@@ -1010,8 +1017,10 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
 		else
 			data_size_f = data_size;
 
-		if( abs(seq_target - ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f) < U32_MAX>>1 
-			&& ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f <= seq_target )
+		seq_next = ntohl(tcp_hdr ( pbn->bd->skb )->seq) + (u32)data_size_f;
+/*		if( abs(seq_target - ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f) < U32_MAX>>1 
+			&& ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f <= seq_target )*/
+		if(seq_next == seq_target || before(seq_next, seq_target))
 		{
 			if( iterator == this_tcp_info->playback_ptr )
 				break;
@@ -1087,7 +1096,8 @@ struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info
         ip_header = ip_hdr(pbn->bd->skb);
         tcp_header = tcp_hdr(pbn->bd->skb);
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        if(ntohl(tcp_header->seq) <= real_target_seq && ntohl(tcp_header->seq) + data_size > real_target_seq)
+        if((ntohl(tcp_header->seq) == real_target_seq || before(ntohl(tcp_header->seq), real_target_seq))
+			&& after(ntohl(tcp_header->seq) + data_size, real_target_seq))
 		{
 			PRINT_DEBUG("[%s] target_seq: %u, real: %u, get: %zu(%u,%zu) at %p, ret %p\n", __func__, seq_target, real_target_seq, ntohl(tcp_header->seq) + data_size, ntohl(tcp_header->seq), data_size, pbn->bd, ret);
 			retp->next = ret->next;
@@ -1167,7 +1177,7 @@ void packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 	ack_skb = skb_clone (this_tcp_info->last_ack_send_from_target, GFP_ATOMIC);
 	spin_unlock_bh(&this_tcp_info->info_lock);
 
-	if(node_count > PACKET_BUFFER_HARD_LIMIT)
+	if(0 && node_count > PACKET_BUFFER_HARD_LIMIT)
 	{
 		send_skb = skb_copy (ack_skb, GFP_ATOMIC);
 		tcp_hdr(send_skb)->window = 0;
@@ -1175,6 +1185,7 @@ void packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 	}
 	else if(node_count > PACKET_BUFFER_SOFT_LIMIT)
 	{
+		PRINT_INFO("node_count: %d\n", node_count);
 		send_skb = skb_clone (ack_skb, GFP_ATOMIC);
 		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
 		send_skb = skb_clone (ack_skb, GFP_ATOMIC);

@@ -25,7 +25,8 @@ struct commom_buffers
     struct compare_buffer target_buffer;
     struct compare_buffer mirror_buffer;
 };
-
+#define INIT_LAST_SEND	(1<<0)
+#define INIT_TSVAL		(1<<1)
 struct tcp_conn_info
 {
 	struct commom_buffers buffers;
@@ -35,6 +36,7 @@ struct tcp_conn_info
 	spinlock_t compare_lock;
 	spinlock_t retranstimer_lock;
 	spinlock_t info_lock;
+	unsigned char init;
 	/*
 	 * information about rmhost, target, mirror
 	 */

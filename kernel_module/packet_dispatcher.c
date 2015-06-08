@@ -340,11 +340,11 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 									kfree(playback_ptr);
 								}
 							}
-							/*else if(this_tcp_info->dup_ack_counter > 2 * MAX_FLYING_PACKET)
+							else if(this_tcp_info->dup_ack_counter > MAX_FLYING_PACKET)
 							{
 								this_tcp_info->dup_ack_counter = 0;
-								this_tcp_info->flying_packet_count = 0;
-							}*/
+//								this_tcp_info->flying_packet_count = 0;
+							}
 						}
 						return 0;
 					}
@@ -487,6 +487,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
             pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_RMHOST );
             break;
         }
+        packet_buff_limiter(this_tcp_info);
     }
 
     return 0;
