@@ -487,7 +487,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
             pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_RMHOST );
             break;
         }
-        packet_buff_limiter(this_tcp_info);
+//		packet_buff_limiter(this_tcp_info);
     }
 
     return 0;

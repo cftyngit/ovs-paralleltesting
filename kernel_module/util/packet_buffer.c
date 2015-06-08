@@ -14,9 +14,6 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	struct list_head* prev = NULL;
 	struct pkt_buffer_node* pbn_i = NULL;
 	struct pkt_buffer_node* pbn_p = NULL;
-	u64 pbn_seq = (u64)pbn->opt_key << 32 | pbn->seq_num;
-// 	u64 pbn_seq_n = (u64)pbn->opt_key << 32 | pbn->seq_num_next;
-//	u64 pbn_i_seq = 0, pbn_i_seq_n = 0, pbn_p_seq = 0, pbn_p_seq_n = 0;
 
 	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
@@ -27,17 +24,9 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	list_for_each_prev(iterator, head)
 	{
 		struct pkt_buffer_node* tmp = list_entry(iterator, struct pkt_buffer_node, list);
-		if(abs(tmp->seq_num - pbn->seq_num) > U32_MAX>>1)
-		{
-			u64 iter_seq_n = (u64)tmp->opt_key << 32 | tmp->seq_num_next;
-			if(iter_seq_n <= pbn_seq)
+		if(tmp->seq_num_next == pbn->seq_num || before(tmp->seq_num_next, pbn->seq_num))
 				break;
-		}
-		else
-		{
-			if(tmp->seq_num_next <= pbn->seq_num)
-				break;
-		}
+
 		prev = iterator;
 	}
 	/**
@@ -59,21 +48,25 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	/**
 	 * no spaces between inerator and prev: free
 	 */
-	if(abs(pbn_p->seq_num - pbn_i->seq_num_next) < U32_MAX>>1 && pbn_i->seq_num_next >= pbn_p->seq_num)
+	if(pbn_i->seq_num_next == pbn_p->seq_num || after(pbn_i->seq_num_next, pbn_p->seq_num))
 		goto free;
 	/**
 	 * pbn overlap with iterator or prev: free
 	 */
-	if(abs(pbn->seq_num_next - pbn_i->seq_num_next) < U32_MAX>>1 && pbn_i->seq_num_next >= pbn->seq_num_next)
+	if(pbn_i->seq_num_next == pbn->seq_num_next || after(pbn_i->seq_num_next, pbn->seq_num_next))
 		goto free;
-	if(abs(pbn_p->seq_num - pbn->seq_num) < U32_MAX>>1 && pbn_p->seq_num <= pbn->seq_num)
+	if((pbn_p->seq_num == pbn->seq_num || before(pbn_p->seq_num, pbn->seq_num))
+		&& (pbn_p->seq_num_next == pbn->seq_num_next || after(pbn_p->seq_num_next, pbn->seq_num_next)))
 		goto free;
 insert:
+	if(pbn_p && before(pbn_p->seq_num_next, pbn->seq_num_next))
+		pkt_buffer_delete(prev, pbuf);
+
 	list_add(&pbn->list, iterator);
 	pbuf->node_count++;
 	goto out;
 free:
-	PRINT_INFO("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
+	PRINT_DEBUG("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
 	kfree(pbn->bd->p);
 	kfree_skb(pbn->bd->skb);
 	kfree(pbn->bd);

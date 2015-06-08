@@ -4,6 +4,7 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
+#include <net/tcp.h>
 
 #include "../kernel_common.h"
 
