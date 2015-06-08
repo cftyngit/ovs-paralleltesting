@@ -37,7 +37,7 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info);
 int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_info);
 struct list_head* find_retransmit_ptr(const u32 seq_target, struct tcp_conn_info* this_tcp_info);
 void setup_playback_ptr(struct list_head* target_prt, struct tcp_conn_info* this_tcp_info);
-void packet_buff_limiter(struct tcp_conn_info* this_tcp_info);
+int packet_buff_limiter(struct tcp_conn_info* this_tcp_info);
 
 int retransmit_form_ptr(struct list_head* ptr, union my_ip_type ip, u16 port, struct tcp_conn_info* this_tcp_info);
 void retransmit_by_timer(unsigned long ptr);

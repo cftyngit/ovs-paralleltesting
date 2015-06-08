@@ -46,10 +46,26 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 		goto insert;
 	pbn_i = list_entry(iterator, struct pkt_buffer_node, list);
 	/**
-	 * no spaces between inerator and prev: free
+	 * no spaces between inerator and prev
 	 */
 	if(pbn_i->seq_num_next == pbn_p->seq_num || after(pbn_i->seq_num_next, pbn_p->seq_num))
-		goto free;
+	{
+		/**
+		 * in this case prev should free and pbn should insert
+		 * |--iterator--|
+		 *              |---pbn---|
+		 *          |--prev--|
+		 */
+		if(between(pbn->seq_num, pbn_p->seq_num, pbn_i->seq_num_next) && after(pbn->seq_num_next, pbn_p->seq_num_next))
+		{
+			PRINT_DEBUG("del prev: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
+			pkt_buffer_delete(prev, pbuf);
+			pbn_p = NULL;
+			goto insert;
+		}
+		else
+			goto free;
+	}
 	/**
 	 * pbn overlap with iterator or prev: free
 	 */
@@ -60,8 +76,10 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 		goto free;
 insert:
 	if(pbn_p && before(pbn_p->seq_num_next, pbn->seq_num_next))
+	{
+		PRINT_DEBUG("del prev: pbn: (%u, %u), prev: (%u, %u)\n", pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
 		pkt_buffer_delete(prev, pbuf);
-
+	}
 	list_add(&pbn->list, iterator);
 	pbuf->node_count++;
 	goto out;

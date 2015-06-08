@@ -717,14 +717,14 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 
         if ( cause != CAUSE_BY_RETRAN && (TCP_STATE_SYN_RCVD == info_state || TCP_STATE_FIN_WAIT1 == info_state || TCP_STATE_CLOSED == info_state) )
 		{
-			PRINT_DEBUG("line %d\n", __LINE__);
+			PRINT_INFO("line %d\n", __LINE__);
 			break;
 		}
 
 		bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
 		if ( NULL == bd )
 		{
-			PRINT_DEBUG("NULL == bd\n");
+			PRINT_INFO("NULL == bd\n");
 			break;
 		}
         /*
@@ -734,7 +734,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		skb_mod = skb_copy ( bd->skb, GFP_ATOMIC );
 		if(!skb_mod)
 		{
-			PRINT_DEBUG("skb_copy fail\n");
+			PRINT_ERROR("skb_copy fail\n");
 			break;
 		}
         tcp_header = tcp_hdr ( skb_mod );
@@ -1164,24 +1164,31 @@ exit:
 	kfree(info);
 }
 
-void packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
+int packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 {
 	struct sk_buff* send_skb = NULL;
 	struct sk_buff* ack_skb = NULL;
-	int node_count = this_tcp_info->buffers.packet_buffer.node_count;
-
-	if(node_count < PACKET_BUFFER_SOFT_LIMIT || this_tcp_info->last_ack_send_from_target == NULL)
-		return;
+	struct sk_buff* info_last_ack_send_from_target = NULL;
+	char over_limit = 0;
+	int node_count = 0;
 
 	spin_lock_bh(&this_tcp_info->info_lock);
-	ack_skb = skb_clone (this_tcp_info->last_ack_send_from_target, GFP_ATOMIC);
+	info_last_ack_send_from_target = this_tcp_info->last_ack_send_from_target;
+	node_count = this_tcp_info->buffers.packet_buffer.node_count;
 	spin_unlock_bh(&this_tcp_info->info_lock);
 
-	if(0 && node_count > PACKET_BUFFER_HARD_LIMIT)
+	if(node_count < PACKET_BUFFER_SOFT_LIMIT || info_last_ack_send_from_target == NULL)
+		return 0;
+
+	ack_skb = skb_clone (info_last_ack_send_from_target, GFP_ATOMIC);
+	
+	if(1 && node_count > PACKET_BUFFER_HARD_LIMIT)
 	{
+		PRINT_INFO("node_count: %d\n", node_count);
 		send_skb = skb_copy (ack_skb, GFP_ATOMIC);
 		tcp_hdr(send_skb)->window = 0;
 		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+		over_limit = 1;
 	}
 	else if(node_count > PACKET_BUFFER_SOFT_LIMIT)
 	{
@@ -1192,6 +1199,21 @@ void packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
 		send_skb = skb_clone (ack_skb, GFP_ATOMIC);
 		send_skbmod(send_skb, this_tcp_info->other_args_from_target);
+		over_limit = 2;
 	}
 	kfree_skb(ack_skb);
+	if(over_limit == 2)
+	{
+		spin_lock_bh(&this_tcp_info->info_lock);
+		if(info_last_ack_send_from_target == this_tcp_info->last_ack_send_from_target)
+		{
+			this_tcp_info->last_ack_send_from_target = NULL;
+			kfree_skb(info_last_ack_send_from_target);
+		}
+		spin_unlock_bh(&this_tcp_info->info_lock);
+	}
+	if(over_limit == 1)
+		return 1;
+	else
+		return 0;
 }

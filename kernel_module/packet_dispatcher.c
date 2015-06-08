@@ -295,6 +295,9 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                 send_size = seq_last_send_n - this_ack_seq;
 
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
+			if(this_tcp_info->window_current == 0)
+				PRINT_DEBUG("respond_window: %u, send_size: %u, seq_last_send: %u, last_send_size: %u, this_ack_seq: %u\n", respond_window, send_size, this_tcp_info->seq_last_send, this_tcp_info->last_send_size, this_ack_seq);
+
 			if((this_tcp_info->state == TCP_STATE_SYN_RCVD || this_tcp_info->state == TCP_STATE_SYN_SEND) || after(ntohl(tcp_header->ack_seq), this_tcp_info->seq_last_ack))
 				this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
 
@@ -487,7 +490,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
             pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_RMHOST );
             break;
         }
-//		packet_buff_limiter(this_tcp_info);
+		packet_buff_limiter(this_tcp_info);
     }
 
     return 0;
@@ -498,6 +501,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
     struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+	int rc = 0;
     if ( IPPROTO_UDP == ip_header->protocol )
     {
         struct udphdr* udp_header = udp_hdr ( skb );
@@ -595,6 +599,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 			this_tcp_info->last_ack_send_from_target = info_last_ack_send_from_target;
 		}
 		spin_unlock_bh(&this_tcp_info->info_lock);
+		rc = packet_buff_limiter(this_tcp_info);
     }
-    return 0;
+    return rc;
 }

@@ -79,7 +79,11 @@ void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct
 		pd_action_from_client(skb, &arg);
 		break;
 	case PT_ACTION_FROM_TARGET:
-		pd_action_from_server(skb, &arg);
+		if(pd_action_from_server(skb, &arg) != 0)
+		{
+			consume_skb(skb);
+			return;
+		}
 		break;
 	case PT_ACTION_CONTINUE:
 		break;
