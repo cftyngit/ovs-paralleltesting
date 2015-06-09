@@ -295,14 +295,11 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                 send_size = seq_last_send_n - this_ack_seq;
 
             this_tcp_info->window_current = send_size > respond_window ? 0 : respond_window - send_size;
-			if(this_tcp_info->window_current == 0)
-				PRINT_DEBUG("respond_window: %u, send_size: %u, seq_last_send: %u, last_send_size: %u, this_ack_seq: %u\n", respond_window, send_size, this_tcp_info->seq_last_send, this_tcp_info->last_send_size, this_ack_seq);
 
 			if((this_tcp_info->state == TCP_STATE_SYN_RCVD || this_tcp_info->state == TCP_STATE_SYN_SEND) || after(ntohl(tcp_header->ack_seq), this_tcp_info->seq_last_ack))
 				this_tcp_info->seq_last_ack = ntohl(tcp_header->ack_seq);
 
 			slide_send_window(this_tcp_info);
-///            printk("[%s] bd_edge: %p\n", __func__, bd_edge);
             if(TCP_STATE_ESTABLISHED == this_tcp_info->state && bd_edge)
             {
                 u32 seq_rmhost = this_tcp_info->seq_rmhost;

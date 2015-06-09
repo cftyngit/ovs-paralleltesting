@@ -36,7 +36,7 @@ struct tcp_conn_info
 	spinlock_t compare_lock;
 	spinlock_t retranstimer_lock;
 	spinlock_t info_lock;
-	unsigned char init;
+	unsigned int init;
 	/*
 	 * information about rmhost, target, mirror
 	 */
