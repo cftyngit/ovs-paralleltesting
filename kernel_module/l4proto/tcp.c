@@ -135,7 +135,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
     /* caculate checksum */
 
     pdata = skb_put(skb_new, sizeof(tcp_options));
-    if (pdata) 
+    if (pdata)
     {
         memmove(pdata, tcp_options, sizeof(tcp_options));
     }
@@ -143,7 +143,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
      * setup tcp timestamp
      */
     pdata = skb_put(skb_new, ((TCPOLEN_TIMESTAMP>>2)+1)<<2);
-    if (pdata && tcp_info->tsval_current) 
+    if (pdata)
     {
         const u32 ftsval = FAKE_TSVAL;
         const char timestamp[] = {TCPOPT_TIMESTAMP, TCPOLEN_TIMESTAMP};
@@ -153,7 +153,7 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
         pdata+=sizeof(timestamp);
         put_unaligned_be32(ftsval, pdata);
         pdata+=4;
-        put_unaligned_be32(tcp_info->tsval_current, pdata);
+        put_unaligned_be32(tcp_time_stamp, pdata);
     }
     skb_new->csum = skb_checksum(skb_new, ip_header->ihl*4, skb_new->len-ip_header->ihl*4, 0);
     tcp_header->check = 0;
@@ -231,7 +231,7 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
     /* construct tcp header in skb */
     tcp_header = tcp_hdr(skb_new);
     memset (tcp_header, 0, sizeof(struct tcphdr));
-    tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size + (sk_tcp_header->syn || sk_tcp_header->fin ? 1 : 0));
+	tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size + (sk_tcp_header->syn || sk_tcp_header->fin ? 1 : 0));
     tcp_header->seq = sk_tcp_header->ack_seq;
     tcp_header->source = sk_tcp_header->dest;
     tcp_header->dest = sk_tcp_header->source;
@@ -259,7 +259,7 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
      * setup tcp timestamp
      */
     pdata = skb_put(skb_new, ((TCPOLEN_TIMESTAMP>>2)+1)<<2);
-    if (pdata && tcp_info->tsval_current) 
+    if (pdata/* && tcp_info->tsval_current*/)
     {
         const char timestamp[] = {TCPOPT_TIMESTAMP, TCPOLEN_TIMESTAMP};
         memset(pdata, 0x01, (((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP);
@@ -268,7 +268,8 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
         pdata+=sizeof(timestamp);
         put_unaligned_be32(tcp_info->tsval_last_send, pdata);
         pdata+=4;
-        put_unaligned_be32(tcp_info->tsval_current, pdata);
+        //put_unaligned_be32(tcp_info->tsval_current, pdata);
+		put_unaligned_be32(tcp_time_stamp, pdata);
     }
     tcp_header->check = 0;
     tcp_header->check = tcp_v4_check(skb_new->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_new->csum);
@@ -438,7 +439,7 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 					if(after(tcp_info->tsval_last_send, pkt_tsval))
 						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+0);
 
-					put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
+					put_unaligned_be32(tcp_time_stamp, (void*)ptr+4);
 				}
 				break;
 			case TCPOPT_SACK_PERM:
@@ -698,6 +699,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		u32 info_seq_last_ack;
 		u32 info_seq_last_send;
 		unsigned char info_init;
+		int pkt_build_by_our = 0;
 
 		spin_lock_irqsave(&this_tcp_info->info_lock, flags);
 		seq_server = this_tcp_info->seq_server;
@@ -728,7 +730,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		bd = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_ptr_tmp );
 		if ( NULL == bd )
 		{
-			PRINT_INFO("NULL == bd\n");
+			PRINT_DEBUG("NULL == bd\n");
 			break;
 		}
         /*
@@ -771,6 +773,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
                     break;
 				}
                 should_break = 1;
+				pkt_build_by_our = 1;
                 skb_mod = tmp;
                 pkt_ptr_tmp = info_playback_ptr;
             }
@@ -902,6 +905,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			skb_ack_seq = ntohl(tcp_header->ack_seq);
 			skb_tsval = get_tsval(skb_mod);
 			send_skbmod(skb_mod, bd->p);
+			if(pkt_build_by_our)
+				goto setup_timer_finish;
 		}
 		/**
 		 * setup timer, only sended packet need to setup timer
@@ -916,7 +921,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			else
 				seq_target = info_seq_last_ack + ( seq_rmhost - seq_rmhost_fake );
 
-			if(after(skb_seq + data_size, seq_target))
+			if(after(skb_seq + data_size, seq_target) && bd->should_delete == 0)
 			{
 				info = kmalloc(sizeof(struct retransmit_info), GFP_KERNEL); //free at retransmit_by_timer
 				if(info)
@@ -938,6 +943,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 				}
 			}
 		}
+setup_timer_finish:
 		/*
 		 * update connection state
 		 */
@@ -977,8 +983,8 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		if(!should_break)
             state_reset = set_tcp_state ( bd->skb, NULL );
 
-        if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
-            break;
+//         if(this_tcp_info->playback_ptr != this_tcp_info->send_wnd_right_dege)
+//             break;
 
 //		if(data_size && ++data_packet_counter > 6)
 //			break;
@@ -1028,7 +1034,7 @@ void slide_send_window(struct tcp_conn_info* this_tcp_info)
 		seq_next = ntohl(tcp_hdr ( pbn->bd->skb )->seq) + (u32)data_size_f;
 /*		if( abs(seq_target - ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f) < U32_MAX>>1 
 			&& ntohl(tcp_hdr ( pbn->bd->skb )->seq) + data_size_f <= seq_target )*/
-		if(seq_next == seq_target || before(seq_next, seq_target))
+		if(seq_next == seq_target || before(seq_next, seq_target) || pbn->bd->should_delete)
 		{
 			if( iterator == this_tcp_info->playback_ptr )
 				break;
@@ -1155,10 +1161,12 @@ void retransmit_by_timer(unsigned long ptr)
     struct buf_data* bd;
     union my_ip_type ip = info->ip;
     u16 client_port = info->client_port;
+	packet_buffer_t* pbuf = &this_tcp_info->buffers.packet_buffer;
     //kfree(info);
     //printk("[%s] ptr: %lu\n", __func__, 123);
-    
+    spin_lock_bh(&pbuf->packet_lock);
     bd = pkt_buffer_peek_data_from_ptr ( & ( this_tcp_info->buffers.packet_buffer ), &retrans_ptr_tmp );
+	spin_unlock_bh(&pbuf->packet_lock);
 	if(NULL == bd)
 		goto exit;
 
@@ -1169,6 +1177,12 @@ void retransmit_by_timer(unsigned long ptr)
     retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
 	rcu_read_unlock();
 exit:
+	if(bd->should_delete && spin_trylock_bh(&pbuf->packet_lock))
+	{
+		pkt_buffer_delete(retrans_ptr_tmp->next, & ( this_tcp_info->buffers.packet_buffer ));
+		spin_unlock_bh(&pbuf->packet_lock);
+	}
+
 	kfree(info);
 }
 

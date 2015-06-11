@@ -25,7 +25,7 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	{
 		struct pkt_buffer_node* tmp = list_entry(iterator, struct pkt_buffer_node, list);
 		if(tmp->seq_num_next == pbn->seq_num || before(tmp->seq_num_next, pbn->seq_num))
-				break;
+			break;
 
 		prev = iterator;
 	}
@@ -124,19 +124,37 @@ out:
 struct buf_data* pkt_buffer_peek_data(packet_buffer_t* pbuf)
 {
 	struct list_head* head = NULL;
-	struct list_head* pos = NULL;
+// 	struct list_head* pos = NULL;
 	struct buf_data *bd = NULL;
+	struct pkt_buffer_node *pbn = NULL;
+	struct list_head *iterator = NULL, *tmp = NULL;
 
 	spin_lock_bh(&pbuf->packet_lock);
 	head = &pbuf->buffer_head;
 	if(list_empty(head))
 		goto out;
 
-	pos = (head)->next;
-	if(list_entry(pos, struct pkt_buffer_node, list)->barrier)
-		goto out;
+// 	pos = (head)->next;
+// 	if(list_entry(pos, struct pkt_buffer_node, list)->barrier)
+// 		goto out;
+//
+// 	bd = list_entry(pos, struct pkt_buffer_node, list)->bd;
+	list_for_each_safe(iterator, tmp, head)
+	{
+		if(iterator == NULL || iterator == LIST_POISON1 || iterator == LIST_POISON2)
+			continue;
 
-	bd = list_entry(pos, struct pkt_buffer_node, list)->bd;
+		pbn = list_entry(iterator, struct pkt_buffer_node, list);
+		if(pbn->bd->should_delete)
+			pkt_buffer_delete(iterator, pbuf);
+		else
+		{
+			if(pbn->barrier == 0)
+				bd =pbn->bd;
+
+			goto out;
+		}
+	}
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
 	return bd;
@@ -231,6 +249,11 @@ struct buf_data* pkt_buffer_peek_data_from_ptr(packet_buffer_t* pbuf, struct lis
 		if(pbn && pbn->bd != NULL)
 		{
 			*ptr = this_ptr->next;
+			if(pbn->bd->should_delete)
+			{
+				PRINT_INFO("access a deleted packet\n");
+				return NULL;
+			}
 			return pbn->bd;
 		}
 	}
@@ -251,8 +274,10 @@ inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
 
 	pbn = list_entry(iterator, struct pkt_buffer_node, list);
 	if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+	{
+		pbn->bd->should_delete = 1;
 		return -1;
-
+	}
 	list_del(iterator);
 	kfree(pbn->bd->p);
 	kfree_skb(pbn->bd->skb);

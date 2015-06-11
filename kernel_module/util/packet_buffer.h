@@ -11,6 +11,7 @@
 struct buf_data
 {
     int retrans_times;
+	int should_delete;
     struct timer_list timer;
     struct sk_buff* skb;
     struct other_args* p;

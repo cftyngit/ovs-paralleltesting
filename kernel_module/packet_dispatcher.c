@@ -217,6 +217,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             bn->seq_num_next = bn->seq_num + data_size;
             bn->opt_key = get_tsval(skb);
             this_udp_info->current_seq_mirror = bn->seq_num_next;
+			this_udp_info->buffers.mirror_buffer.least_seq = bn->seq_num;
             compare_buffer_insert(bn, &this_udp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
         }
@@ -261,6 +262,8 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             bn->seq_num = ntohl(tcp_header->seq);
             bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
             bn->opt_key = get_tsval(skb);
+			if(tcp_header->syn)
+				this_tcp_info->buffers.mirror_buffer.least_seq = ntohl(tcp_header->seq);
             compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
@@ -283,7 +286,11 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 			u32 seq_last_send_n = this_tcp_info->seq_last_send + (u32)this_tcp_info->last_send_size;
             packet_buffer_t* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
             struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege->prev;
-            struct buf_data* bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
+            struct buf_data* bd_edge = NULL;
+
+			spin_lock_bh(&packet_buf->packet_lock);
+			bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
+			spin_unlock_bh(&packet_buf->packet_lock);
             /*
              * if the ack seq is the lastest send pkt or bigger than lastest pkt
              * we can just use it's respond window size, otherwise, the respond window size have to minus
@@ -384,24 +391,33 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         /*
          * record lastest packet seq number
          */
-        if((this_tcp_info->state == TCP_STATE_SYN_RCVD || this_tcp_info->state == TCP_STATE_SYN_SEND)
+        if(tcp_header->syn
 			|| (ntohl(tcp_header->seq) == this_tcp_info->seq_next)
-			|| after(ntohl(tcp_header->seq), this_tcp_info->seq_next))
+			/*|| after(ntohl(tcp_header->seq), this_tcp_info->seq_next)*/)
         {
+			u32 seq_next = 0;
             if ( tcp_header->syn || tcp_header->fin )
                 data_size = data_size + 1;
 
             this_tcp_info->seq_current = ntohl(tcp_header->seq);
-            this_tcp_info->seq_next = (ntohl(tcp_header->seq) + (u32)data_size);
+			if(compare_buffer_gethole(&seq_next, &this_tcp_info->buffers.mirror_buffer) == 0)
+				this_tcp_info->seq_next = seq_next;
+			else
+				this_tcp_info->seq_next = (ntohl(tcp_header->seq) + (u32)data_size);
         }
         set_tcp_state ( NULL, skb );
-//from_mirror_respond_mirror:
-//		if(this_tcp_info->dup_ack_counter >= 3)
-			pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
-		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && !tcp_header->syn && before(ntohl(tcp_header->seq), this_tcp_info->ackseq_last_playback))
+
+		pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
+
+		if(TCP_STATE_ESTABLISHED == this_tcp_info->state && data_size > 0 && !tcp_header->syn 
+			&& (before(ntohl(tcp_header->seq), this_tcp_info->ackseq_last_playback)
+			|| between(this_tcp_info->ackseq_last_playback, ntohl(tcp_header->seq), ntohl(tcp_header->seq) + data_size)))
 		{
 			PRINT_DEBUG("[%s] ack this packet: state: state: %d, data_size: %zu, last_play: %u\n", __func__, this_tcp_info->state, data_size, this_tcp_info->ackseq_last_playback);
 			PRINT_DEBUG("[%s] ack this packet: %u, %u\n", __func__, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq));
+			if(between(this_tcp_info->ackseq_last_playback, ntohl(tcp_header->seq), ntohl(tcp_header->seq) + data_size))
+				this_tcp_info->ackseq_last_playback = ntohl(tcp_header->seq) + data_size;
+
 			ack_this_packet(skb, this_tcp_info);
 		}
     }
@@ -415,13 +431,12 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
     packet_buffer_t* packet_buf = NULL;
     struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
     struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
-    struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_KERNEL); 
-
-//    PRINT_DEBUG("into function: %s\n", __func__);
+    struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_KERNEL);
 
     memcpy(this_args, arg, sizeof_other_args);
     bd->p = this_args;
     bd->retrans_times = 0;
+	bd->should_delete = 0;
     init_timer(&(bd->timer));
 //	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
     if ( IPPROTO_UDP == ip_header->protocol )
@@ -468,9 +483,15 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
         //add_data ( packet_buf, bd );
 ///        printk("[%s] tcp_header->seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->seq_last_ack);
 ///        printk("[%s] tcp_header->ack_seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info));
-		if((ntohl(tcp_header->seq) == this_tcp_info->seq_last_ack || after(ntohl(tcp_header->seq), this_tcp_info->seq_last_ack))
+		if(tcp_header->syn || (ntohl(tcp_header->seq) == this_tcp_info->seq_last_ack || after(ntohl(tcp_header->seq), this_tcp_info->seq_last_ack))
 			|| (ntohl(tcp_header->ack_seq) == seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info) || after(ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))))
+		{
+			if(tcp_header->syn)
+			{
+				pkt_buffer_cleanup(packet_buf);
+			}
 			pkt_buffer_insert ( pbn, packet_buf );
+		}
 		else
 		{
 			kfree(pbn->bd->p);
@@ -524,6 +545,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
             bn->seq_num_next = bn->seq_num + data_size;
             bn->opt_key = get_tsval(skb);
             this_udp_info->current_seq_target = bn->seq_num_next;
+			this_udp_info->buffers.target_buffer.least_seq = bn->seq_num;
             compare_buffer_insert(bn, &this_udp_info->buffers.target_buffer);
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
         }
@@ -560,6 +582,9 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
             bn->seq_num = ntohl(tcp_header->seq);
             bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
             bn->opt_key = packet_tsval;
+			if(tcp_header->syn)
+				this_tcp_info->buffers.target_buffer.least_seq = ntohl(tcp_header->seq);
+
             compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }

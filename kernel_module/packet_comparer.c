@@ -6,7 +6,7 @@ int simple_comparer(char* data1, char* data2, size_t length)
 	{
 		int i = 0;
 		size_t remain = length;
-		PRINT_INFO("different: remain %zu\n", remain);
+		printk("different: remain %zu\n", remain);
 		for(i = 0; i < length; i+=16)
 		{
 			char print_buf[128] = {0};
@@ -48,7 +48,7 @@ int simple_comparer(char* data1, char* data2, size_t length)
 					strcat(print_buf, tmp_buf);
 				}
 			}
-			PRINT_INFO("%s\n", print_buf);
+			printk("%s\n", print_buf);
 			remain -= print_len;
 		}
 	}
@@ -56,7 +56,7 @@ int simple_comparer(char* data1, char* data2, size_t length)
 	{
 		int i = 0;
 		size_t remain = length;
-		PRINT_INFO("the same:\n");
+		printk("the same:\n");
 		for(i = 0; i < length; i+=16)
 		{
 			char print_buf[64] = {0};
@@ -76,7 +76,7 @@ int simple_comparer(char* data1, char* data2, size_t length)
 					strcat(print_buf, tmp_buf);
 				}
 			}
-			PRINT_INFO("%s\n", print_buf);
+			printk("%s\n", print_buf);
 			remain -= print_len;
 		}
 
