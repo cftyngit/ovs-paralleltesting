@@ -54,7 +54,7 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 // 	}
 	if(bn_n && bn_p && bn_n == bn_p)
 	{
-		PRINT_DEBUG("insert data is cover by buffer data\n", __LINE__);
+		PRINT_DEBUG("insert data is cover by buffer data\n");
 		goto free;
 	}
 // 	if(!prev || bn->seq_num_next <= list_entry(prev, struct buffer_node, list)->seq_num)
