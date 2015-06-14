@@ -1,12 +1,12 @@
 #include "ovsptd_nlmgr.h"
-
+#include <stdio.h>
 static int nl_sockfd;
 
 int nl_init()
 {
 	int ret = 0;
 	UINT16 ret_type = 0;
-	char* data;
+	char data[NL_MAXPAYLOAD];
 
 	if(nl_sockfd)
 		return 0;
@@ -19,8 +19,14 @@ int nl_init()
 		return -1;
 
 	nl_sockfd = ret;
-	if(0 > recv_nl_message(&ret_type, (void**)&data))
+	while(0 >  recv_nl_message(&ret_type, (void*)&data))
 	{
+		printf("ret: %d\n", errno);
+		if(errno == EAGAIN || errno == EWOULDBLOCK)
+		{
+			usleep(100);
+			continue;
+		}
 		nl_sockfd = 0;
 		return -1;
 	}
@@ -31,17 +37,22 @@ int nl_init()
 int nl_uninit()
 {
 	UINT16 ret_type = 0;
-	char* data;
-
+	char data[NL_MAXPAYLOAD];
 	if(!nl_sockfd)
 		return 0;
 
 	if(0 > send_nl_message(nl_sockfd, NLMSG_DAEMON_UNREG, NULL, 0))
 		return -1;
 
-	if(0 > recv_nl_message(&ret_type, (void**)&data))
+	while(0 > recv_nl_message(&ret_type, (void*)&data))
+	{
+		if(errno == EAGAIN || errno == EWOULDBLOCK)
+		{
+			usleep(100);
+			continue;
+		}
 		return -1;
-
+	}
 	nl_sockfd = 0;
 	return 0;
 }
@@ -72,6 +83,8 @@ int get_nl_socket()
 	if(0 > sock)
 		return -1;
 
+	int flags = fcntl(sock, F_GETFL, 0);
+	printf("fctnl: %d\n", fcntl(sock, F_SETFL, flags|O_NONBLOCK));
 	struct sockaddr_nl src_addr;
 	bzero(&src_addr, sizeof(src_addr));
 	src_addr.nl_family = AF_NETLINK;
@@ -114,7 +127,7 @@ int send_nl_message(int fd, int type, void* data, size_t length)
     return sendmsg(fd, &msg, 0);
 }
 
-int recv_nl_message(UINT16* type, void** data)
+int recv_nl_message(UINT16* type, void* data)
 {
 	char buf[NL_MAXPAYLOAD + NLMSG_HDRLEN];
 	int len;
@@ -124,14 +137,15 @@ int recv_nl_message(UINT16* type, void** data)
 	struct nlmsghdr *nh;
 
 	if(0 == nl_sockfd)
-		return -1;
+		return -EBADF;
 
 	len = recvmsg(nl_sockfd, &msg, 0);
 	if(len < 0)
-		return -1;
+		return len;
 
 	nh = (struct nlmsghdr *) buf;
 	*type = nh->nlmsg_type;
-	*data = NLMSG_DATA(nh);
+	memmove(data, NLMSG_DATA(nh), nh->nlmsg_len);
+
 	return nh->nlmsg_len - NLMSG_HDRLEN;
 }

@@ -159,6 +159,7 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     PRINT_INFO("old mirror ip = %d\n", mirror.ip.i);
     if(set_server != NULL)
     {
+		server.port_no = set_server->port_no;
         server.ip.i = set_server->ip.i;
         memcpy(server.mac, set_server->mac, 6);
         PRINT_INFO("set server ip = %hhu.%hhu.%hhu.%hhu\n", server.ip.c[0], server.ip.c[1], server.ip.c[2], server.ip.c[3]);
@@ -166,6 +167,7 @@ int pd_setup_hosts(struct host_info* set_server, struct host_info* set_mirror)
     }
     if(set_mirror != NULL)
     {
+		mirror.port_no = set_mirror->port_no;
         mirror.ip.i = set_mirror->ip.i;
         memcpy(mirror.mac, set_mirror->mac, 6);
         PRINT_INFO("set mirror ip = %hhu.%hhu.%hhu.%hhu\n", mirror.ip.c[0], mirror.ip.c[1], mirror.ip.c[2], mirror.ip.c[3]);
@@ -178,7 +180,7 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 {
 	int should_break = INT_MAX;
 	struct nlmsghdr *out_nlh;
-	void *out_payload;
+	char *out_payload;
 	int remain = length;
 	int send_size = 0;
 	spin_lock_bh(&(send_lock));
@@ -199,7 +201,7 @@ int netlink_sendmes(UINT16 type, char* data, int length)
 		}
 		out_payload = nlmsg_data(out_nlh);
 		if(0 < remain)
-			memmove(out_payload, data, send_block);
+			memmove(out_payload, data + (length - remain), send_block);
 
 		nlmsg_unicast(netlink_sock, out_skb, daemon_pid);
 		PRINT_DEBUG("[%s] send block: %d\n", __func__, send_block);
@@ -223,6 +225,7 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 	int send_size = 0;
 	char* buffer = kmalloc(NL_MAXPAYLOAD, GFP_KERNEL); //NL_MAXPAYLOAD is too large to alloc in stack
 	char* data_begin = buffer + sizeof(struct connection_info);
+
 	if(!buffer)
 		return -1;
 
@@ -238,8 +241,11 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 		if(actual_send < 0)
 			break;
 
-		remain -= actual_send;
-		send_size += actual_send;
+		if(actual_send > sizeof(struct connection_info))
+		{
+			remain -= (actual_send - sizeof(struct connection_info));
+			send_size += (actual_send - sizeof(struct connection_info));
+		}
 	}
 	kfree(buffer);
 	return send_size;

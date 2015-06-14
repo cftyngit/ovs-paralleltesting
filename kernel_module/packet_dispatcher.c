@@ -253,18 +253,29 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 		 */
         if(data_size || tcp_header->syn || tcp_header->fin)
         {
-            //memcpy ( data, ( char * ) ( ( unsigned char * ) tcp_header + ( tcp_header->doff * 4 ) ), data_size );
-			//memmove ( data, (void *) skb->data + (tcp_header->doff*4 + ip_header->ihl*4 + sizeof(struct ethhdr)), data_size );
             skb_copy_bits(skb, (tcp_header->doff*4 + ip_header->ihl*4 + sizeof(struct ethhdr)), data, data_size);
 			bn->payload.data = data;
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
+            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn));
             bn->opt_key = get_tsval(skb);
 			if(tcp_header->syn)
 				this_tcp_info->buffers.mirror_buffer.least_seq = ntohl(tcp_header->seq);
-            compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
+
+			compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
+			if(tcp_header->fin)
+			{// Add an edge bh to make push-fin packet can be compare
+				struct buffer_node* tail_bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+				PRINT_DEBUG("insert tail buffer node\n");
+				tail_bn->payload.data = kmalloc(0, GFP_KERNEL);
+				tail_bn->payload.length = 0;
+				tail_bn->payload.remain = 0;
+				tail_bn->seq_num = bn->seq_num_next;
+				tail_bn->seq_num_next = bn->seq_num_next + 1;
+				tail_bn->opt_key = bn->opt_key;
+				compare_buffer_insert(tail_bn, &this_tcp_info->buffers.mirror_buffer);
+			}
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
         else
@@ -580,12 +591,24 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
             bn->payload.length = data_size;
             bn->payload.remain = data_size;
             bn->seq_num = ntohl(tcp_header->seq);
-            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn || tcp_header->fin));
+            bn->seq_num_next = (bn->seq_num + (u32)data_size + (u32)(tcp_header->syn));
             bn->opt_key = packet_tsval;
 			if(tcp_header->syn)
 				this_tcp_info->buffers.target_buffer.least_seq = ntohl(tcp_header->seq);
 
-            compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
+			compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
+			if(tcp_header->fin)
+			{// Add an edge bh to make push-fin packet can be compare
+				struct buffer_node* tail_bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+				PRINT_DEBUG("insert tail buffer node\n");
+				tail_bn->payload.data = kmalloc(0, GFP_KERNEL);
+				tail_bn->payload.length = 0;
+				tail_bn->payload.remain = 0;
+				tail_bn->seq_num = bn->seq_num_next;
+				tail_bn->seq_num_next = bn->seq_num_next + 1;
+				tail_bn->opt_key = packet_tsval;
+				compare_buffer_insert(tail_bn, &this_tcp_info->buffers.target_buffer);
+			}
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
 		if (before(info_timestamp_last_from_target, packet_tsval))
