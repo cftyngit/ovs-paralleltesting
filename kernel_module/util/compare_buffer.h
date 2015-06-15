@@ -36,7 +36,7 @@ struct data_node* compare_buffer_getblock(struct compare_buffer* buffer);
 size_t compare_buffer_consume(size_t size, struct compare_buffer* buffer);
 void del_buffer_node(struct buffer_node* bn);
 int compare_buffer_cleanup(struct compare_buffer* buffer);
-int compare_buffer_gethole(u32* seq_num, struct compare_buffer* buffer);
+int compare_buffer_gethole(u32* seq_numu, u32* opt_key, struct compare_buffer* buffer);
 
 #define compare_buffer_remove(bn) \
     list_del(bn->list)

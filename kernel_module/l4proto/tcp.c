@@ -145,15 +145,14 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
     pdata = skb_put(skb_new, ((TCPOLEN_TIMESTAMP>>2)+1)<<2);
     if (pdata)
     {
-        const u32 ftsval = FAKE_TSVAL;
         const char timestamp[] = {TCPOPT_TIMESTAMP, TCPOLEN_TIMESTAMP};
         memset(pdata, 0x01, (((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP);
         pdata+=(((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP;
         memmove(pdata, timestamp, sizeof(timestamp));
         pdata+=sizeof(timestamp);
-        put_unaligned_be32(ftsval, pdata);
-        pdata+=4;
         put_unaligned_be32(tcp_time_stamp, pdata);
+        pdata+=4;
+        put_unaligned_be32(get_tsval(skb), pdata);
     }
     skb_new->csum = skb_checksum(skb_new, ip_header->ihl*4, skb_new->len-ip_header->ihl*4, 0);
     tcp_header->check = 0;
@@ -192,7 +191,7 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
     struct iphdr* sk_ip_header = ip_hdr(skb);
     struct tcphdr* sk_tcp_header = tcp_hdr(skb);
     struct net_device* netdev = skb->dev;
-    size_t data_size = ntohs ( sk_ip_header->tot_len ) - ( ( sk_ip_header->ihl ) <<2 ) - ( ( sk_tcp_header->doff ) <<2 );
+//     size_t data_size = ntohs ( sk_ip_header->tot_len ) - ( ( sk_ip_header->ihl ) <<2 ) - ( ( sk_tcp_header->doff ) <<2 );
     __be32 dip = sk_ip_header->saddr;
     __be32 sip = sk_ip_header->daddr;
     //u8 *pdata = NULL;
@@ -231,7 +230,8 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
     /* construct tcp header in skb */
     tcp_header = tcp_hdr(skb_new);
     memset (tcp_header, 0, sizeof(struct tcphdr));
-	tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size + (sk_tcp_header->syn || sk_tcp_header->fin ? 1 : 0));
+// 	tcp_header->ack_seq = htonl( ntohl(sk_tcp_header->seq) + data_size + (sk_tcp_header->syn || sk_tcp_header->fin ? 1 : 0));
+	tcp_header->ack_seq = htonl(tcp_info->seq_next);
     tcp_header->seq = sk_tcp_header->ack_seq;
     tcp_header->source = sk_tcp_header->dest;
     tcp_header->dest = sk_tcp_header->source;
@@ -266,10 +266,13 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
         pdata+=(((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP;
         memmove(pdata, timestamp, sizeof(timestamp));
         pdata+=sizeof(timestamp);
-        put_unaligned_be32(tcp_info->tsval_last_send, pdata);
-        pdata+=4;
-        //put_unaligned_be32(tcp_info->tsval_current, pdata);
+//         put_unaligned_be32(tcp_info->tsval_last_send, pdata);
+		
 		put_unaligned_be32(tcp_time_stamp, pdata);
+        pdata+=4;
+//         put_unaligned_be32(tcp_info->tsval_current, pdata);
+// 		put_unaligned_be32(tcp_time_stamp, pdata);
+		put_unaligned_be32(tcp_info->ts_recent, pdata);
     }
     tcp_header->check = 0;
     tcp_header->check = tcp_v4_check(skb_new->len - (ip_header->ihl<<2), ip_header->saddr, ip_header->daddr, skb_new->csum);
@@ -361,22 +364,23 @@ struct sk_buff* build_ack_sk_buff(struct sk_buff* skb, u32 seq_ack)
     ip_header->daddr = dip;
     ip_header->saddr = sip;
     ip_header->ttl = 0x40;
-    ip_header->tot_len = htons(skb_new->len) + (((TCPOLEN_TIMESTAMP>>2)+1)<<2);
+    ip_header->tot_len = htons(skb_new->len + (((TCPOLEN_TIMESTAMP>>2)+1)<<2));
     ip_header->check = 0;
     ip_send_check(ip_header);
     /* caculate checksum */
     pdata = skb_put(skb_new, (((TCPOLEN_TIMESTAMP>>2)+1)<<2));
     if (pdata && skb_tsecr) 
     {
-        const u32 ftsval = get_tsval(skb);
+//         const u32 ftsval = get_tsval(skb);
         const char timestamp[] = {TCPOPT_TIMESTAMP, TCPOLEN_TIMESTAMP};
         memset(pdata, 0x01, (((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP);
         pdata += (((TCPOLEN_TIMESTAMP>>2)+1)<<2) - TCPOLEN_TIMESTAMP;
         memmove(pdata, timestamp, sizeof(timestamp));
         pdata+=sizeof(timestamp);
-        put_unaligned_be32(ftsval, pdata);
+        put_unaligned_be32(tcp_time_stamp, pdata);
         pdata+=4;
-        put_unaligned_be32(skb_tsecr, pdata);
+//         put_unaligned_be32(skb_tsecr, pdata);
+		put_unaligned_be32(skb_tsecr, pdata);
     }
      skb_new->csum = skb_checksum(skb_new, ip_header->ihl*4, skb_new->len-ip_header->ihl*4, 0);
      tcp_header->check = 0;
@@ -435,11 +439,13 @@ void setup_options(struct sk_buff* skb_mod, const struct tcp_conn_info* tcp_info
 			case TCPOPT_TIMESTAMP:
 				if(opsize == TCPOLEN_TIMESTAMP)
 				{
-					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
-					if(after(tcp_info->tsval_last_send, pkt_tsval))
-						put_unaligned_be32(tcp_info->tsval_last_send, (void*)ptr+0);
+// 					u32 pkt_tsval = get_unaligned_be32(ptr + 0);
+// 					if(after(tcp_info->tsval_last_send, pkt_tsval))
+						put_unaligned_be32(tcp_time_stamp, (void*)ptr+0);
 
-					put_unaligned_be32(tcp_time_stamp, (void*)ptr+4);
+// 					put_unaligned_be32(tcp_time_stamp, (void*)ptr+4);
+// 						put_unaligned_be32(tcp_info->tsval_current, (void*)ptr+4);
+						put_unaligned_be32(tcp_info->ts_recent, (void*)ptr+4);
 				}
 				break;
 			case TCPOPT_SACK_PERM:
@@ -753,37 +759,40 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		 * means we can't send this packet right now, 
 		 * we build an ack to mirror to prevent unwanted retransmission from mirror
 		 */
-        if(cause != CAUSE_BY_RETRAN && after(seq_tmp, info_seq_next))
-        {
-            struct sk_buff* tmp = NULL;
-			PRINT_DEBUG("seq_tmp: %u, seq_next: %u\n", seq_tmp, info_seq_next);
-            if( TCP_STATE_ESTABLISHED == info_state && after(info_ackseq_last_from_target, ntohl(tcp_header->seq)) )
-            {
-                u32 target_ack_seq = 0;
-                if ( seq_mirror > seq_server )
-                    target_ack_seq = info_seq_next - ( seq_mirror - seq_server );
-                else
-                    target_ack_seq = info_seq_next + ( seq_server - seq_mirror );
-
-                tmp = build_ack_sk_buff(skb_mod, target_ack_seq);
-                kfree_skb(skb_mod);
-                if(NULL == tmp)
-				{
-					PRINT_DEBUG("build_ack_sk_buff fail\n");
-                    break;
-				}
-                should_break = 1;
-				pkt_build_by_our = 1;
-                skb_mod = tmp;
-                pkt_ptr_tmp = info_playback_ptr;
-            }
-            else
-            {
-				PRINT_DEBUG("TCP_STATE_ESTABLISHED != this_tcp_info->state\n");
-				PRINT_DEBUG("ackseq_last_from_target: %u, tcp_header->seq: %u\n", info_ackseq_last_from_target, ntohl(tcp_header->seq));
-                kfree_skb(skb_mod);
-                break;
-            }
+		if(cause != CAUSE_BY_RETRAN && after(seq_tmp, info_seq_next))
+		{
+			kfree_skb(skb_mod);
+			break;
+//             struct sk_buff* tmp = NULL;
+// 			PRINT_DEBUG("seq_tmp: %u, seq_next: %u\n", seq_tmp, info_seq_next);
+//             if( TCP_STATE_ESTABLISHED == info_state && !before(info_ackseq_last_from_target, ntohl(tcp_header->seq)) )
+//             {
+//                 u32 target_ack_seq = 0;
+//                 if ( seq_mirror > seq_server )
+//                     target_ack_seq = info_seq_next - ( seq_mirror - seq_server );
+//                 else
+//                     target_ack_seq = info_seq_next + ( seq_server - seq_mirror );
+// 
+// 				PRINT_DEBUG("build skb ack_seq: %u\n", info_seq_next);
+//                 tmp = build_ack_sk_buff(skb_mod, target_ack_seq);
+//                 kfree_skb(skb_mod);
+//                 if(NULL == tmp)
+// 				{
+// 					PRINT_DEBUG("build_ack_sk_buff fail\n");
+//                     break;
+// 				}
+//                 should_break = 1;
+// 				pkt_build_by_our = 1;
+//                 skb_mod = tmp;
+//                 pkt_ptr_tmp = info_playback_ptr;
+//             }
+//             else
+//             {
+// 				PRINT_DEBUG("TCP_STATE_ESTABLISHED != this_tcp_info->state\n");
+// 				PRINT_DEBUG("ackseq_last_from_target: %u, tcp_header->seq: %u\n", info_ackseq_last_from_target, ntohl(tcp_header->seq));
+//                 kfree_skb(skb_mod);
+//                 break;
+//             }
         }
         tcp_header = tcp_hdr ( skb_mod );
         ip_header = ip_hdr ( skb_mod );
@@ -791,7 +800,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
 		if(cause != CAUSE_BY_RETRAN && data_size > info_window_current)
 		{
-			PRINT_DEBUG("data_size: %zu, window_current: %u\n", data_size, info_window_current);
+			PRINT_DEBUG("data_size: %u, window_current: %u\n", data_size, info_window_current);
 			should_break = 1;
 		}
 		/*
@@ -890,7 +899,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		 */
 		if(1 && CAUSE_BY_RETRAN != cause && data_size && info_flying_packet_count > MAX_FLYING_PACKET)
 		{
-//			PRINT_DEBUG("del_skbmod %d: (%u, %u) size: %zu, %d, retrans: %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, data_packet_counter, this_tcp_info->dup_ack_counter);
+			PRINT_DEBUG("del_skbmod %d: (%u, %u) size: %zu, %d, retrans: %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, info_flying_packet_count, this_tcp_info->dup_ack_counter);
 			kfree_skb(skb_mod);
 			break;
 		}
@@ -899,7 +908,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 			if(CAUSE_BY_RETRAN != cause && data_size)
 				info_flying_packet_count++;
 
-			PRINT_DEBUG("send_skbmod %d: (%u, %u) size: %zu, %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, info_flying_packet_count);
+			PRINT_DEBUG("send_skbmod %d: (%u, %u) size: %u, %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, info_flying_packet_count);
 			skb_tcp_flags = *(struct tcp_flags*)(&(tcp_header->ack_seq) + 1);
 			skb_seq = ntohl(tcp_header->seq);
 			skb_ack_seq = ntohl(tcp_header->ack_seq);
@@ -966,11 +975,11 @@ setup_timer_finish:
 			this_tcp_info->last_send_size = data_size_f;
 			this_tcp_info->window_current -= data_size;
 		}
-		if(!(info_init & INIT_TSVAL) || after(skb_tsval, this_tcp_info->tsval_last_send))
-		{
-			this_tcp_info->init |= INIT_TSVAL;
-			this_tcp_info->tsval_last_send = skb_tsval;
-		}
+// 		if(!(info_init & INIT_TSVAL) || after(skb_tsval, this_tcp_info->tsval_last_send))
+// 		{
+// 			this_tcp_info->init |= INIT_TSVAL;
+// 			this_tcp_info->tsval_last_send = skb_tsval;
+// 		}
 		/*
 		 * setup send_window's right edge
 		 */

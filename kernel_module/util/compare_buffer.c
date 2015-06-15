@@ -192,12 +192,13 @@ int compare_buffer_cleanup(struct compare_buffer* buffer)
 	return 0;
 }
 
-int compare_buffer_gethole(u32* seq_num, struct compare_buffer* buffer)
+int compare_buffer_gethole(u32* seq_num, u32* opt_key, struct compare_buffer* buffer)
 {
 	struct list_head *head = NULL;
 	struct buffer_node *iterator;
 	u32 this_seq_num = 0;
 	u32 seq_next = 0;
+	u32 opt = 0;
 
 	spin_lock_bh(&(buffer->compare_lock));
 	head = &buffer->buffer_head;
@@ -205,21 +206,24 @@ int compare_buffer_gethole(u32* seq_num, struct compare_buffer* buffer)
 	if(list_empty(head))
 	{
 		spin_unlock_bh(&(buffer->compare_lock));
+		*seq_num = buffer->least_seq;
 		return -1;
 	}
 	list_for_each_entry(iterator, head, list)
 	{
-		printk("(%u, %u) ", this_seq_num, seq_next);
+// 		printk("(%u, %u) ", this_seq_num, seq_next);
 		if((this_seq_num == 0 && seq_next == 0) || iterator->seq_num == seq_next)
 		{
 			this_seq_num = iterator->seq_num;
 			seq_next = iterator->seq_num_next;
+			opt = iterator->opt_key;
 		}
 		else
 			break;
 	}
-	printk("(%u, %u) ", this_seq_num, seq_next);
+// 	printk("(%u, %u) ", this_seq_num, seq_next);
 	spin_unlock_bh(&(buffer->compare_lock));
 	*seq_num = seq_next;
+	*opt_key = opt;
 	return 0;
 }

@@ -22,6 +22,7 @@ int simple_compare(istream& target, istream& mirror)
 	bool target_avail = true;
 	bool mirror_avail = true;
 	unsigned int cmp_count = 0;
+	int retry_times = 0;
 	while(1)
 	{
 		unsigned char byte_m;
@@ -37,8 +38,15 @@ int simple_compare(istream& target, istream& mirror)
 			mirror_avail = false;
 		}
 		if(!(target_avail && mirror_avail))
-			break;
-
+		{
+			if(++retry_times > 10)
+				break;
+			std::this_thread::sleep_for (std::chrono::milliseconds(500 * retry_times));
+			target_avail = true;
+			mirror_avail = true;
+			continue;
+		}
+		retry_times = 0;
 		if(!(cmp_count % 16))
 			printf("%08X: ", cmp_count);
 

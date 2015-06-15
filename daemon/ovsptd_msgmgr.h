@@ -52,11 +52,10 @@ public:
 	void stop()
 	{
 		should_exit = 1;
+		int ret = nl_uninit();
 		if(msg_thread.joinable())
 			msg_thread.join();
-		read_lock.lock();
-		int ret = nl_uninit();
-		read_lock.unlock();
+
 		if(ret == 0)
 			reg = 0;
 	}

@@ -50,7 +50,7 @@ struct tcp_conn_info
 	/*
 	 * information in transmission
 	 */
-	u32 seq_current;				//the biggest seq number receive from mirror (seem useless)
+	u32 seq_current_next;				//the biggest next seq number receive from mirror
 	u32 seq_next;                   //next seq number that we need to ack
 	u32 seq_last_send;
 	u32 ackseq_last_from_target;
@@ -70,8 +70,9 @@ struct tcp_conn_info
 	 * time stamps
 	 */
     u32 timestamp_last_from_target;
-    u32 tsval_current;
-    u32 tsval_last_send;
+	u32 ts_recent;
+//     u32 tsval_current;
+//     u32 tsval_last_send;
     u32 seq_last_ack;               //last ack from mirror
 };
 
