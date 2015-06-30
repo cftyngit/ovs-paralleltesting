@@ -59,6 +59,7 @@ public:
 	vector<compare_info> query_all_compares();
 	compare_obj* get_compare(compare_key key);
 	int add_data(string data, connection_info info);
+	int add_data(const char* data, int size, connection_info info);
 };
 
 #endif

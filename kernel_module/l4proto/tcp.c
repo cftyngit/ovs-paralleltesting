@@ -899,7 +899,7 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
 		 */
 		if(1 && CAUSE_BY_RETRAN != cause && data_size && info_flying_packet_count > MAX_FLYING_PACKET)
 		{
-			PRINT_DEBUG("del_skbmod %d: (%u, %u) size: %zu, %d, retrans: %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, info_flying_packet_count, this_tcp_info->dup_ack_counter);
+// 			PRINT_DEBUG("del_skbmod %d: (%u, %u) size: %u, %d, retrans: %d\n", cause, ntohl(tcp_header->seq), ntohl(tcp_header->ack_seq), data_size, info_flying_packet_count, this_tcp_info->dup_ack_counter);
 			kfree_skb(skb_mod);
 			break;
 		}

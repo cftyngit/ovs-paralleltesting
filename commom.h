@@ -20,7 +20,7 @@
 #ifndef __KERNEL__
 #define NL_MAXPAYLOAD		4096
 #else
-#define NL_MAXPAYLOAD		NLMSG_DEFAULT_SIZE
+#define NL_MAXPAYLOAD		(NLMSG_DEFAULT_SIZE>>1)
 #endif
 //type lower than 0x10 is reserved for control messages, which is defined in uapi/linux/netlink.h
 //control managenent messages

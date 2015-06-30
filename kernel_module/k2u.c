@@ -234,7 +234,7 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 	{
 		int send_block = min(data_capacity, remain);
 		int actual_send = 0;
-// 		PRINT_DEBUG("send block: %d to host: %d\n", send_block, info->host_type);
+		PRINT_DEBUG("send block: %d to host: %d\n", send_block, info->host_type);
 // 		PRINT_DEBUG("[%s] remain: %d\n", __func__, remain);
 		memmove(data_begin, data + (length - remain), send_block);
 		actual_send = netlink_sendmes(NLMSG_DATA_SEND, buffer, send_block + sizeof(struct connection_info));

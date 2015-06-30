@@ -8,20 +8,21 @@ void ovsptd_msgmgr::thread_func ( ovsptd_msgmgr* msgmgr )
 
 	while(!msgmgr->should_exit)
 	{
-		if(!msgmgr->read_lock.try_lock())
-		{
-			std::this_thread::sleep_for (std::chrono::milliseconds(1));
-			continue;
-		}
+// 		if(!msgmgr->read_lock.try_lock())
+// 		{
+// 			std::this_thread::sleep_for (std::chrono::milliseconds(1));
+// 			continue;
+// 		}
 		size = recv_nl_message(&type, (void*)&data);
 		if(size > 0 && type == NLMSG_DATA_SEND)
 		{
 			struct connection_info* inf = (struct connection_info*)data;
 			const char* payload_data = (char*)(inf + 1);
 			size_t payload_length = size - sizeof(connection_info);
-			msgmgr->compare_buffer.add_data(string(payload_data, payload_length), *inf);
+// 			msgmgr->compare_buffer.add_data(string(payload_data, payload_length), *inf);
+			msgmgr->compare_buffer.add_data(payload_data, payload_length, *inf);
 		}
-		msgmgr->read_lock.unlock();
+// 		msgmgr->read_lock.unlock();
 // 		std::this_thread::sleep_for (std::chrono::milliseconds(1));
 	}
 }

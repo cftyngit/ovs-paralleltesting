@@ -131,7 +131,10 @@ int main()
 			unsigned int cmp_i;
 			cout << "compare index: ";
 			cin >> cmp_i;
-			if(cmp_i > all_info.size())
+			if(all_info.empty())
+				all_info = msgmgr.query_all_info();
+
+			if(cmp_i >= all_info.size())
 			{
 				cout << "invalid index: "<< cmp_i <<endl;
 				break;
