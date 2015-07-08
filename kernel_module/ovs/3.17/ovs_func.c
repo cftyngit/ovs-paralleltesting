@@ -8,10 +8,12 @@ const char* ovs_hook_sym_name = "ovs_vport_receive";
 #define ovs_dp_process_received_packet (*ovs_dp_process_received_packet_hi)
 #define ovs_vport_send (*ovs_vport_send_hi)
 #define ovs_lookup_vport (*ovs_lookup_vport_hi)
+#define ovs_netdev_get_vport (*ovs_netdev_get_vport_hi)
 
 void (*ovs_dp_process_received_packet_hi)(struct vport *p, struct sk_buff *skb);
 int (*ovs_vport_send_hi)(struct vport *, struct sk_buff *);
 struct vport* (*ovs_lookup_vport_hi)(const struct datapath *, u16);
+struct vport* (*ovs_netdev_get_vport_hi)(struct net_device *dev);
 
 void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, struct ovs_key_ipv4_tunnel *tun_key);
 
@@ -34,6 +36,10 @@ int ovs_init_func(void)
 
 	ovs_lookup_vport_hi = (void*)kallsyms_lookup_name("ovs_lookup_vport");
 	if(ovs_lookup_vport_hi == 0)
+		return -1;
+
+	ovs_netdev_get_vport_hi = (void*)kallsyms_lookup_name("ovs_netdev_get_vport");
+	if(ovs_netdev_get_vport_hi == 0)
 		return -1;
 
 	return 0;
@@ -62,7 +68,12 @@ void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, struct ovs_k
 		pd_action_from_client(skb, &arg);
 		break;
 	case PT_ACTION_FROM_TARGET:
-		pd_action_from_server(skb, &arg);
+// 		pd_action_from_server(skb, &arg);
+		if(pd_action_from_server(skb, &arg) != 0)
+		{
+			consume_skb(skb);
+			return;
+		}
 		break;
 	case PT_ACTION_CONTINUE:
 		break;
@@ -86,10 +97,13 @@ static inline struct vport *ovs_vport_rcu(const struct datapath *dp, int port_no
 
 inline void ovs_vport_output(struct sk_buff *skb, int port_no, struct other_args *args)
 {
-	struct vport *vport = args->vport;
-	struct datapath *dp = vport->dp;
+	struct vport *this_vport = ovs_netdev_get_vport(skb->dev);
+	struct datapath *dp = this_vport ? this_vport->dp : args->vport->dp;
+// 	struct datapath *dp = vport->dp;
+// 	struct vport *vport = args->vport;
+	struct vport *vport = ovs_vport_rcu(dp, port_no);
 
-	vport = ovs_vport_rcu(dp, port_no);
+// 	vport = ovs_vport_rcu(dp, port_no);
 	if (unlikely(!vport)) {
 		kfree_skb(skb);
 		return;

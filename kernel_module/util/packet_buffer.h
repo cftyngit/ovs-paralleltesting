@@ -33,6 +33,7 @@ typedef struct packet_buffer_s
 	struct list_head buffer_head;
 	spinlock_t packet_lock;
 	int node_count;
+	unsigned long lastest_jiff;
 }packet_buffer_t;
 
 void pkt_buffer_init(packet_buffer_t* pbuf);

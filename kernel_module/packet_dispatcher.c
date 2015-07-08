@@ -94,7 +94,7 @@ int pd_check_action (struct sk_buff *skb, struct other_args* arg)
 
     if ( ETH_P_IP != eth_type )
 	{
-		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN) && arp_hdr(skb)->ar_op == ARPOP_REQUEST)
+		if(ETH_P_ARP == eth_type && !memcmp(mac_header->h_source, mirror.mac, ETH_ALEN) && ntohs(arp_hdr(skb)->ar_op) == ARPOP_REQUEST)
 		{
 			response_arp(skb, arg);
 			return PT_ACTION_DROP;
@@ -298,7 +298,15 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             packet_buffer_t* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
             struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege->prev;
             struct buf_data* bd_edge = NULL;
-
+			if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
+			{
+				int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
+				if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
+					seconds ++;
+				packet_buf->lastest_jiff = jiffies;
+				while(seconds--)
+					PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
+			}
 			spin_lock_bh(&packet_buf->packet_lock);
 			bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
 			spin_unlock_bh(&packet_buf->packet_lock);
@@ -509,9 +517,20 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 
         if(TCP_STATE_LISTEN == this_tcp_info->state && !tcp_header->syn)
         {
+			kfree_skb(skb_mod);
             return 0;
         }
         packet_buf = & ( this_tcp_info->buffers.packet_buffer );
+		if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
+		{
+			int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
+			if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
+				seconds ++;
+
+			packet_buf->lastest_jiff = jiffies;
+			while(seconds--)
+				PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
+		}
         bd->conn_info = this_tcp_info;
 		bd->skb = skb_mod;
         pbn->seq_num = ntohl(tcp_header->seq);
@@ -667,11 +686,15 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 			kfree(this_tcp_info->other_args_from_target);
 			this_tcp_info->other_args_from_target = info_other_args_from_target;
 		}
+// 		else
+// 			kfree(info_other_args_from_target);
 		if(info_last_ack_send_from_target != this_tcp_info->last_ack_send_from_target)
 		{
 			kfree_skb(this_tcp_info->last_ack_send_from_target);
 			this_tcp_info->last_ack_send_from_target = info_last_ack_send_from_target;
 		}
+// 		else
+// 			kfree_skb(info_last_ack_send_from_target);
 		spin_unlock_bh(&this_tcp_info->info_lock);
 		rc = packet_buff_limiter(this_tcp_info);
     }

@@ -9,16 +9,19 @@ const char* ovs_hook_sym_name = "ovs_vport_receive";
 #define ovs_dp_process_packet (*ovs_dp_process_packet_hi)
 #define ovs_vport_send (*ovs_vport_send_hi)
 #define ovs_lookup_vport (*ovs_lookup_vport_hi)
+#define ovs_netdev_get_vport (*ovs_netdev_get_vport_hi)
 
 int (*ovs_flow_key_extract_hi)(const struct ovs_tunnel_info *tun_info, struct sk_buff *skb, struct sw_flow_key *key);
 void (*ovs_dp_process_packet_hi)(struct sk_buff *skb, struct sw_flow_key *key);
 int (*ovs_vport_send_hi)(struct vport *, struct sk_buff *);
 struct vport* (*ovs_lookup_vport_hi)(const struct datapath *, u16);
+struct vport* (*ovs_netdev_get_vport_hi)(struct net_device *dev);
 
 void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct ovs_tunnel_info *tun_info);
 
 struct other_args
 {
+	struct datapath *dp;
 	struct vport* vport;
 	const struct ovs_tunnel_info* tun_info;
 };
@@ -43,6 +46,10 @@ int ovs_init_func(void)
 	if(ovs_lookup_vport_hi == 0)
 		return -1;
 
+	ovs_netdev_get_vport_hi = (void*)kallsyms_lookup_name("ovs_netdev_get_vport");
+	if(ovs_netdev_get_vport_hi == 0)
+		return -1;
+
 	return 0;
 }
 void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct ovs_tunnel_info *tun_info)
@@ -50,7 +57,7 @@ void ovs_vport_receive_hi(struct vport *vport, struct sk_buff *skb, const struct
 	struct pcpu_sw_netstats *stats;
 	struct sw_flow_key key;
 	int error;
-	struct other_args arg = {vport, tun_info};
+	struct other_args arg = {vport->dp, vport, tun_info};
 
 	stats = this_cpu_ptr(vport->percpu_stats);
 	u64_stats_update_begin(&stats->syncp);
@@ -119,8 +126,11 @@ static inline struct vport *ovs_vport_rcu(const struct datapath *dp, int port_no
 
 inline void ovs_vport_output(struct sk_buff *skb, int port_no, struct other_args *args)
 {
-	struct datapath *dp = args->vport->dp;
+// 	struct datapath *dp = args->vport->dp;
+	struct vport *this_vport = ovs_netdev_get_vport(skb->dev);
+	struct datapath *dp = this_vport ? this_vport->dp : args->dp;
 	struct vport *vport = ovs_vport_rcu(dp, port_no);
+// 	struct vport *vport = args->vport->dp;
 
 	if (likely(vport))
 		ovs_vport_send(vport, skb);

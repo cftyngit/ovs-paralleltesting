@@ -3,13 +3,14 @@
 //const union ip client = {{10, 0, 0, 1},};
 //const union ip server = {{10, 0, 0, 2},};
 //const union ip mirror = {{10, 0, 0, 3},};
-struct host_info server = {{{10, 0, 0, 2}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, 0};
-struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}, 0};
+struct host_info server = {{{10, 0, 0, 2}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, 3};
+struct host_info mirror = {{{10, 0, 0, 3}}, {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}, 4};
 //struct host_info server = {{{192, 168, 3, 2}}, {0x00, 0x13, 0x3b, 0x0e, 0xd9, 0x5f}, 5};
 //struct host_info mirror = {{{192, 168, 3, 3}}, {0x00, 0x13, 0x3b, 0x0e, 0xd2, 0xa3}, 4};
 
 void print_skb ( struct sk_buff *skb )
 {
+#if INFO==1
 	struct sk_buff* skb_mod = skb;
     struct ethhdr* mac_header = eth_hdr ( skb_mod );
     unsigned short eth_type = ntohs ( mac_header->h_proto );
@@ -58,11 +59,12 @@ void print_skb ( struct sk_buff *skb )
 	}
 	PRINT_INFO ( "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" );
 	return;
+#endif
 }
 
 inline void send_skbmod ( struct sk_buff *skb_mod, struct other_args* arg )
 {
-	if(0 && mirror.port_no)
+	if(1 && mirror.port_no)
 		ovs_vport_output(skb_mod, mirror.port_no, arg);
 	else
 		ovs_normal_output(skb_mod, arg);

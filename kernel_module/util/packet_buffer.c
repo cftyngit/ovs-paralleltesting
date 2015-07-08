@@ -3,6 +3,7 @@
 inline void pkt_buffer_init(packet_buffer_t* pbuf)
 {
 	pbuf->node_count = 0;
+	pbuf->lastest_jiff = 0;
 	INIT_LIST_HEAD(&(pbuf->buffer_head));
 	spin_lock_init(&(pbuf->packet_lock));
 }
@@ -233,10 +234,14 @@ out:
 
 struct buf_data* pkt_buffer_peek_data_from_ptr(packet_buffer_t* pbuf, struct list_head** ptr)
 {
-	struct list_head* head = &pbuf->buffer_head;
+	struct list_head* head = NULL;
 	struct pkt_buffer_node* pbn = NULL;
 	struct list_head* this_ptr = *ptr;
 
+	if(pbuf == NULL)
+		return NULL;
+
+	head = &pbuf->buffer_head;
 	if(this_ptr == NULL || this_ptr == LIST_POISON1 || this_ptr == LIST_POISON2)
 		return NULL;
 
@@ -273,6 +278,15 @@ inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
 		return -1;
 
 	pbn = list_entry(iterator, struct pkt_buffer_node, list);
+	if(abs(jiffies - pbuf->lastest_jiff) / HZ)
+	{
+		int seconds = pbuf->lastest_jiff ? abs(jiffies - pbuf->lastest_jiff) / HZ : 1;
+		if(pbuf->lastest_jiff && abs(jiffies - pbuf->lastest_jiff) % HZ >= HZ >> 1)
+			seconds++;
+		pbuf->lastest_jiff = jiffies;
+		while(seconds--)
+			PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &pbuf->buffer_head, jiffies, pbuf->node_count);
+	}
 	if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
 	{
 		pbn->bd->should_delete = 1;
@@ -284,5 +298,6 @@ inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
 	kfree(pbn->bd);
 	kfree(pbn);
 	pbuf->node_count--;
+
 	return 0;
 }

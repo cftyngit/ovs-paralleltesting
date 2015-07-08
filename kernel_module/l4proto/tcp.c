@@ -1186,7 +1186,7 @@ void retransmit_by_timer(unsigned long ptr)
     retransmit_form_ptr(retrans_ptr, ip, client_port, this_tcp_info);
 	rcu_read_unlock();
 exit:
-	if(bd->should_delete && spin_trylock_bh(&pbuf->packet_lock))
+	if(bd && pbuf && bd->should_delete && spin_trylock_bh(&pbuf->packet_lock))
 	{
 		pkt_buffer_delete(retrans_ptr_tmp->next, & ( this_tcp_info->buffers.packet_buffer ));
 		spin_unlock_bh(&pbuf->packet_lock);
@@ -1202,12 +1202,22 @@ int packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 	struct sk_buff* info_last_ack_send_from_target = NULL;
 	char over_limit = 0;
 	int node_count = 0;
+	packet_buffer_t* packet_buf = &this_tcp_info->buffers.packet_buffer;
 
 	spin_lock_bh(&this_tcp_info->info_lock);
 	info_last_ack_send_from_target = this_tcp_info->last_ack_send_from_target;
 	node_count = this_tcp_info->buffers.packet_buffer.node_count;
 	spin_unlock_bh(&this_tcp_info->info_lock);
 
+	if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
+	{
+		int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
+		if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
+			seconds++;
+		packet_buf->lastest_jiff = jiffies;
+		while(seconds--)
+			PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
+	}
 	if(node_count < PACKET_BUFFER_SOFT_LIMIT || info_last_ack_send_from_target == NULL)
 		return 0;
 
@@ -1233,16 +1243,16 @@ int packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 		over_limit = 2;
 	}
 	kfree_skb(ack_skb);
-	if(over_limit == 2)
-	{
-		spin_lock_bh(&this_tcp_info->info_lock);
-		if(info_last_ack_send_from_target == this_tcp_info->last_ack_send_from_target)
-		{
-			this_tcp_info->last_ack_send_from_target = NULL;
-			kfree_skb(info_last_ack_send_from_target);
-		}
-		spin_unlock_bh(&this_tcp_info->info_lock);
-	}
+// 	if(over_limit == 2)
+// 	{
+// 		spin_lock_bh(&this_tcp_info->info_lock);
+// 		if(info_last_ack_send_from_target == this_tcp_info->last_ack_send_from_target)
+// 		{
+// 			this_tcp_info->last_ack_send_from_target = NULL;
+// 			kfree_skb(info_last_ack_send_from_target);
+// 		}
+// 		spin_unlock_bh(&this_tcp_info->info_lock);
+// 	}
 	if(over_limit == 1)
 		return 1;
 	else
