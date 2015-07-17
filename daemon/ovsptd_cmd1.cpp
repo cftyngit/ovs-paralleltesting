@@ -50,8 +50,10 @@ int simple_compare(istream& target, istream& mirror)
 		if(!(cmp_count % 16))
 			printf("%08X: ", cmp_count);
 
-		target >> byte_t;
-		mirror >> byte_m;
+// 		target >> byte_t;
+		byte_t = target.get();
+// 		mirror >> byte_m;
+		byte_m = mirror.get();
 		if(byte_m == byte_t)
 			printf("%02X    ", byte_t);
 		else
