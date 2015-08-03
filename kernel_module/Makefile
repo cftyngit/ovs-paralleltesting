@@ -4,6 +4,7 @@ find_k_func-objs := main.o hook.o packet_dispatcher.o k2u.o connect_state.o l4pr
 
 INFO_ON = 1
 DEBUG_ON = 1
+PPBUSAGE_ON = 1
 ERROR_OFF = 0
 
 KERNELVERSION=$(shell uname -r | cut -f1-2 -d.)
@@ -13,7 +14,7 @@ ifeq ($(KERNELDIR),)
 KERNELDIR=/lib/modules/$(shell uname -r)/build
 endif
 
-PRINT_LEVEL = -DINFO=$(INFO_ON) -DDEBUG=$(DEBUG_ON) -DNOERR=$(ERROR_OFF)
+PRINT_LEVEL = -DINFO=$(INFO_ON) -DDEBUG=$(DEBUG_ON) -DNOERR=$(ERROR_OFF) -DPKTBUFF_USAGE=$(PPBUSAGE_ON)
 
 all:
 	KCPPFLAGS="$(PRINT_LEVEL)" make -C $(KERNELDIR) M=$(PWD) modules

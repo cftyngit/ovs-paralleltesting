@@ -211,7 +211,6 @@ int compare_buffer_gethole(u32* seq_num, u32* opt_key, struct compare_buffer* bu
 	}
 	list_for_each_entry(iterator, head, list)
 	{
-// 		printk("(%u, %u) ", this_seq_num, seq_next);
 		if((this_seq_num == 0 && seq_next == 0) || iterator->seq_num == seq_next)
 		{
 			this_seq_num = iterator->seq_num;
@@ -221,7 +220,6 @@ int compare_buffer_gethole(u32* seq_num, u32* opt_key, struct compare_buffer* bu
 		else
 			break;
 	}
-// 	printk("(%u, %u) ", this_seq_num, seq_next);
 	spin_unlock_bh(&(buffer->compare_lock));
 	*seq_num = seq_next;
 	*opt_key = opt;

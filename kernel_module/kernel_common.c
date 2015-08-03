@@ -124,3 +124,17 @@ int pd_modify_ip_mac ( struct sk_buff* skb_mod )
     return 0;
 }
 
+inline void print_packet_buffer_usage(packet_buffer_t* packet_buf)
+{
+#if PKTBUFF_USAGE==1
+	if(packet_buf && abs(jiffies - packet_buf->lastest_jiff) / HZ)
+	{
+		int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
+		if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
+			seconds++;
+		packet_buf->lastest_jiff = jiffies;
+		while(seconds--)
+			printk("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
+	}
+#endif
+}

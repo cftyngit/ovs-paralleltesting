@@ -174,7 +174,6 @@ int respond_tcp_syn_ack(const struct sk_buff* skb, const struct tcp_conn_info* t
         sock_release(sock);
         return -1;
     }
-///    printk("send packet by skb success.\n");
     sock_release(sock);
     return 0;
 }
@@ -292,7 +291,6 @@ int ack_this_packet(const struct sk_buff* skb, const struct tcp_conn_info* tcp_i
         sock_release(sock);
         return -1;
     }
-///    printk("send packet by skb success.\n");
     sock_release(sock);
     return 0;
 }
@@ -650,9 +648,6 @@ int set_tcp_state ( struct sk_buff* skb_client, struct sk_buff* skb_mirror )
         }
         break;
     }
-///    new_state = tcp_state_get(&conn_info_set, ip, port);
-///    if(old_state != new_state )
-///        printk ( KERN_INFO "set_tcp_state %s trigger from %d to %d\n", skb_client ? "rmhost" : "mirror", old_state, new_state );
 
     return state_reset;
 }
@@ -797,7 +792,6 @@ int tcp_playback_packet(union my_ip_type ip, u16 client_port, u8 cause)
         tcp_header = tcp_hdr ( skb_mod );
         ip_header = ip_hdr ( skb_mod );
         data_size = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        //printk("[%s] data_size: %u, window_current: %u\n", __func__, data_size, this_tcp_info->window_current);
 		if(cause != CAUSE_BY_RETRAN && data_size > info_window_current)
 		{
 			PRINT_DEBUG("data_size: %u, window_current: %u\n", data_size, info_window_current);
@@ -1171,8 +1165,7 @@ void retransmit_by_timer(unsigned long ptr)
     union my_ip_type ip = info->ip;
     u16 client_port = info->client_port;
 	packet_buffer_t* pbuf = &this_tcp_info->buffers.packet_buffer;
-    //kfree(info);
-    //printk("[%s] ptr: %lu\n", __func__, 123);
+
     spin_lock_bh(&pbuf->packet_lock);
     bd = pkt_buffer_peek_data_from_ptr ( & ( this_tcp_info->buffers.packet_buffer ), &retrans_ptr_tmp );
 	spin_unlock_bh(&pbuf->packet_lock);
@@ -1209,20 +1202,13 @@ int packet_buff_limiter(struct tcp_conn_info* this_tcp_info)
 	node_count = this_tcp_info->buffers.packet_buffer.node_count;
 	spin_unlock_bh(&this_tcp_info->info_lock);
 
-	if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
-	{
-		int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
-		if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
-			seconds++;
-		packet_buf->lastest_jiff = jiffies;
-		while(seconds--)
-			PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
-	}
+	print_packet_buffer_usage(packet_buf);
+
 	if(node_count < PACKET_BUFFER_SOFT_LIMIT || info_last_ack_send_from_target == NULL)
 		return 0;
 
 	ack_skb = skb_clone (info_last_ack_send_from_target, GFP_ATOMIC);
-	
+
 	if(1 && node_count > PACKET_BUFFER_HARD_LIMIT)
 	{
 		PRINT_INFO("node_count: %d\n", node_count);

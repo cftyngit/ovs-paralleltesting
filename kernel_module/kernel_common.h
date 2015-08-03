@@ -9,6 +9,7 @@
 #include <linux/skbuff.h>
 
 #include "ovs/ovs_func.h"
+#include "util/packet_buffer.h"
 
 #include "../commom.h"
 
@@ -33,11 +34,11 @@
 extern struct host_info server;
 extern struct host_info mirror;
 struct other_args;
+
 int pd_modify_ip_mac ( struct sk_buff* skb_mod );
-//void send_skbmod ( struct vport *p, struct sk_buff *skb_mod );
 void send_skbmod ( struct sk_buff *skb_mod, struct other_args* arg );
-//void vport_send_skmod ( struct vport *p, struct sk_buff *skb_mod );
 void print_skb(struct sk_buff *skb);
+void print_packet_buffer_usage(packet_buffer_t* packet_buf);
 
 #define CAUSE_BY_RMHOST 0
 #define CAUSE_BY_MIRROR 1

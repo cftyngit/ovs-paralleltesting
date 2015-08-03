@@ -6,8 +6,6 @@
 #include <linux/skbuff.h>
 #include <net/tcp.h>
 
-#include "../kernel_common.h"
-
 struct buf_data
 {
     int retrans_times;
@@ -35,6 +33,8 @@ typedef struct packet_buffer_s
 	int node_count;
 	unsigned long lastest_jiff;
 }packet_buffer_t;
+
+#include "../kernel_common.h"
 
 void pkt_buffer_init(packet_buffer_t* pbuf);
 int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf);

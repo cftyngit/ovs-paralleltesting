@@ -108,7 +108,7 @@ int pd_check_action (struct sk_buff *skb, struct other_args* arg)
 
     ip_src.i = ip_header->saddr;
     ip_dst.i = ip_header->daddr;
-	//printk("[%s] input port: %hu\n", );
+
 	if(server.port_no && server.port_no == ovs_get_port_no(arg))
 		return PT_ACTION_FROM_TARGET;
 	else if(mirror.port_no && mirror.port_no == ovs_get_port_no(arg))
@@ -197,7 +197,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
     union my_ip_type ip = {.i = ip_header->daddr,};
     struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
    // mirror.port_no = p->port_no;
-///    printk("into function: %s\n", __func__);
+
     if ( IPPROTO_UDP == ip_header->protocol )
     {
         struct udphdr* udp_header   = udp_hdr ( skb );
@@ -298,15 +298,9 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             packet_buffer_t* packet_buf = & ( this_tcp_info->buffers.packet_buffer );
             struct list_head* pkt_right_edge = this_tcp_info->send_wnd_right_dege->prev;
             struct buf_data* bd_edge = NULL;
-			if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
-			{
-				int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
-				if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
-					seconds ++;
-				packet_buf->lastest_jiff = jiffies;
-				while(seconds--)
-					PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
-			}
+
+			print_packet_buffer_usage(packet_buf);
+
 			spin_lock_bh(&packet_buf->packet_lock);
 			bd_edge = pkt_buffer_peek_data_from_ptr ( packet_buf, &pkt_right_edge );
 			spin_unlock_bh(&packet_buf->packet_lock);
@@ -341,7 +335,6 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
                 /*
                  * process dup ACK and 3 dup ACK retransmission
                  */
-///                printk("[%s] this_ack_seq: %u, seq_edge: %u, data_size_edge:%lu\n", __func__, this_ack_seq, seq_edge, data_size_edge);
 				if(before(this_ack_seq, seq_edge + data_size_edge))
 				{
 					struct list_head* playback_ptr = NULL;
@@ -395,29 +388,29 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         }
         else
             this_tcp_info->window_current = ntohs(tcp_header->window) << this_tcp_info->window_scale;
-///        printk("setup window_c = %u\n", this_tcp_info->window_current);
-        if ( tcp_header->syn /*&& tcp_header->ack*/ )
-        {
-            this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
-            this_tcp_info->mirror_port = ntohs ( tcp_header->source );
-            this_tcp_info->window_scale = get_window_scaling(skb);
-            if( (!tcp_header->ack) && (pkt_buffer_peek_data(&this_tcp_info->buffers.packet_buffer) == NULL) )
-            {
-                respond_tcp_syn_ack(skb, this_tcp_info);
-                this_tcp_info->seq_rmhost_fake = FAKE_SEQ;
-            }
-        }
-        /*
-         * record lastest packet seq number
-         */
+
+		if ( tcp_header->syn /*&& tcp_header->ack*/ )
+		{
+			this_tcp_info->seq_mirror = ntohl ( tcp_header->seq );
+			this_tcp_info->mirror_port = ntohs ( tcp_header->source );
+			this_tcp_info->window_scale = get_window_scaling(skb);
+			if( (!tcp_header->ack) && (pkt_buffer_peek_data(&this_tcp_info->buffers.packet_buffer) == NULL) )
+			{
+				respond_tcp_syn_ack(skb, this_tcp_info);
+				this_tcp_info->seq_rmhost_fake = FAKE_SEQ;
+			}
+		}
+		/*
+		 * record lastest packet seq number
+		 */
 //         if(tcp_header->syn
 // 			|| (ntohl(tcp_header->seq) == this_tcp_info->seq_next)
 // 			/*|| after(ntohl(tcp_header->seq), this_tcp_info->seq_next)*/)
-        {
+		{
 			u32 seq_next = 0;
 			u32 tsval = 0;
-            if ( tcp_header->syn || tcp_header->fin )
-                data_size = data_size + 1;
+			if ( tcp_header->syn || tcp_header->fin )
+				data_size = data_size + 1;
 
             //this_tcp_info->seq_current_next = ntohl(tcp_header->seq) + data_size;
 // 			PRINT_DEBUG("ackseq_last_playback: %u, this_seq: %u\n", this_tcp_info->ackseq_last_playback, ntohl(tcp_header->seq));
@@ -449,7 +442,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 				this_tcp_info->ts_recent = get_tsval(skb);
 // 				PRINT_DEBUG("update ts_recent: %u\n", this_tcp_info->ts_recent);
 			}
-        }
+		}
         set_tcp_state ( NULL, skb );
 
 		pd_respond_mirror ( ip, client_port, IPPROTO_TCP, CAUSE_BY_MIRROR );
@@ -485,7 +478,6 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
     bd->retrans_times = 0;
 	bd->should_delete = 0;
     init_timer(&(bd->timer));
-//	PRINT_DEBUG("[%s] input port: %hu\n", __func__, p->port_no);
     if ( IPPROTO_UDP == ip_header->protocol )
     {
 		struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
@@ -521,16 +513,8 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
             return 0;
         }
         packet_buf = & ( this_tcp_info->buffers.packet_buffer );
-		if(abs(jiffies - packet_buf->lastest_jiff) / HZ)
-		{
-			int seconds = packet_buf->lastest_jiff ? abs(jiffies - packet_buf->lastest_jiff) / HZ : 1;
-			if(packet_buf->lastest_jiff && abs(jiffies - packet_buf->lastest_jiff) % HZ >= HZ >> 1)
-				seconds ++;
+		print_packet_buffer_usage(packet_buf);
 
-			packet_buf->lastest_jiff = jiffies;
-			while(seconds--)
-				PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &packet_buf->buffer_head, jiffies, packet_buf->node_count);
-		}
         bd->conn_info = this_tcp_info;
 		bd->skb = skb_mod;
         pbn->seq_num = ntohl(tcp_header->seq);
@@ -539,8 +523,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
         pbn->bd = bd;
         pbn->barrier = 0;
         //add_data ( packet_buf, bd );
-///        printk("[%s] tcp_header->seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->seq), this_tcp_info->seq_last_ack);
-///        printk("[%s] tcp_header->ack_seq: %u, seq_last_ack: %u\n", __func__, ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info));
+
 		if(tcp_header->syn || (ntohl(tcp_header->seq) == this_tcp_info->seq_last_ack || after(ntohl(tcp_header->seq), this_tcp_info->seq_last_ack))
 			|| (ntohl(tcp_header->ack_seq) == seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info) || after(ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))))
 // 		if(data_size)

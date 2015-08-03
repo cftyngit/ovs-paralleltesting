@@ -278,15 +278,8 @@ inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
 		return -1;
 
 	pbn = list_entry(iterator, struct pkt_buffer_node, list);
-	if(abs(jiffies - pbuf->lastest_jiff) / HZ)
-	{
-		int seconds = pbuf->lastest_jiff ? abs(jiffies - pbuf->lastest_jiff) / HZ : 1;
-		if(pbuf->lastest_jiff && abs(jiffies - pbuf->lastest_jiff) % HZ >= HZ >> 1)
-			seconds++;
-		pbuf->lastest_jiff = jiffies;
-		while(seconds--)
-			PRINT_INFO("head: %p, jiff: %lu, size: %d\n", &pbuf->buffer_head, jiffies, pbuf->node_count);
-	}
+	print_packet_buffer_usage(pbuf);
+
 	if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
 	{
 		pbn->bd->should_delete = 1;
