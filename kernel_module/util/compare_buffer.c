@@ -30,9 +30,9 @@ int compare_buffer_insert(struct buffer_node* bn, struct compare_buffer* buffer)
 	list_for_each_entry_safe_reverse(iterator, n, head, list)
 	{
 		insert_point = &iterator->list;
-		if(iterator->seq_num_next == bn->seq_num_next || after(iterator->seq_num_next, bn->seq_num_next))
+		if(!before(iterator->seq_num_next, bn->seq_num_next))
 			bn_p = iterator;
-		if(iterator->seq_num == bn->seq_num || before(iterator->seq_num, bn->seq_num))
+		if(!after(iterator->seq_num, bn->seq_num))
 		{
 			bn_n = iterator;
 			break;

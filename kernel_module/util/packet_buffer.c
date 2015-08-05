@@ -10,6 +10,63 @@ inline void pkt_buffer_init(packet_buffer_t* pbuf)
 
 int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 {
+	struct list_head *head = NULL, *insert_point = NULL;
+	struct pkt_buffer_node *iterator, *n;
+	struct pkt_buffer_node* pbn_n = NULL;
+	struct pkt_buffer_node* pbn_p = NULL;
+	struct pkt_buffer_node* pbn_this = pbn;
+
+	spin_lock_bh(&(pbuf->packet_lock));
+	head = &pbuf->buffer_head;
+	insert_point = head;
+	/*
+	 * currently, the least_seq in packet buffer is not used, it should be setup when playback packet
+	 */
+// 	if(after(pbuf->least_seq, pbn->seq_num))
+// 	{
+// 		PRINT_DEBUG("retrans? least_seq: %u, bn_seq_num: %u\n", pbuf->least_seq, bn->seq_num);
+// 		goto free;
+// 	}
+	if(list_empty(head))
+		goto insert;
+
+	list_for_each_entry_safe_reverse(iterator, n, head, list)
+	{
+		insert_point = &iterator->list;
+		if(!before(iterator->seq_num_next, pbn->seq_num_next))
+			pbn_p = iterator;
+		if(!after(iterator->seq_num, pbn->seq_num))
+		{
+			pbn_n = iterator;
+			break;
+		}
+		if(pbn_n != iterator && pbn_p != iterator)
+			pkt_buffer_delete(&iterator->list, pbuf);
+	}
+	if(head == &iterator->list)
+		insert_point = head;
+
+	if(pbn_n && pbn_p && !before(pbn_n->seq_num_next, pbn_p->seq_num))
+	{
+		PRINT_DEBUG("insert data is cover by buffer data\n");
+		goto free;
+	}
+insert:
+	PRINT_DEBUG("insert: (%u, %u)\n", pbn_this->seq_num, pbn_this->seq_num_next);
+	list_add(&pbn_this->list, insert_point);
+	goto exit;
+free:
+	kfree(pbn->bd->p);
+	kfree_skb(pbn->bd->skb);
+	kfree(pbn->bd);
+	kfree(pbn);
+exit:
+	spin_unlock_bh(&(pbuf->packet_lock));
+	return 0;
+}
+
+int pkt_buffer_insert2(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
+{
 	struct list_head* head = NULL;
 	struct list_head *iterator;
 	struct list_head* prev = NULL;
