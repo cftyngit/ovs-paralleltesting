@@ -172,8 +172,8 @@ int pd_respond_mirror ( union my_ip_type ip, u16 client_port, unsigned char prot
 				}
 			}
 			send_skbmod(skb_mod, bd->p);
-			kfree(bd->p);
-			kfree(bd);
+			dbg_kfree(bd->p);
+			dbg_kfree(bd);
 			bd = pkt_buffer_get_data ( packet_buf );
 		}
         //pkt_buffer_barrier_remove ( packet_buf );
@@ -195,7 +195,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
-    struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+    struct buffer_node* bn = dbg_kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
    // mirror.port_no = p->port_no;
 
     if ( IPPROTO_UDP == ip_header->protocol )
@@ -204,7 +204,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         unsigned short client_port  = ntohs ( udp_header->dest );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        unsigned char* data         = dbg_kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP, .host_type = HOST_TYPE_MIRROR};
 
         if(data_size)
@@ -221,6 +221,11 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             compare_buffer_insert(bn, &this_udp_info->buffers.mirror_buffer);
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
         }
+        else
+		{
+			dbg_kfree(bn);
+			dbg_kfree(data);
+		}
         this_udp_info->mirror_port = ntohs ( udp_header->source );
         if(pkt_buffer_isempty(&this_udp_info->buffers.packet_buffer))
         {
@@ -235,7 +240,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
         unsigned short client_port  = ntohs ( tcp_header->dest );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
+        unsigned char* data         = dbg_kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_MIRROR};
         u32 this_tsval = get_tsval(skb);
 
@@ -266,9 +271,9 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 			compare_buffer_insert(bn, &this_tcp_info->buffers.mirror_buffer);
 			if(tcp_header->fin)
 			{// Add an edge bh to make push-fin packet can be compare
-				struct buffer_node* tail_bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+				struct buffer_node* tail_bn = dbg_kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
 				PRINT_DEBUG("insert tail buffer node\n");
-				tail_bn->payload.data = kmalloc(0, GFP_KERNEL);
+				tail_bn->payload.data = dbg_kmalloc(0, GFP_KERNEL);
 				tail_bn->payload.length = 0;
 				tail_bn->payload.remain = 0;
 				tail_bn->seq_num = bn->seq_num_next;
@@ -279,7 +284,10 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
             do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
         }
         else
-			kfree(data);
+		{
+			dbg_kfree(bn);
+			dbg_kfree(data);
+		}
         /*
          * if get_tsval return 0, means this packet doesn't set tsval => doesn't need to update
          */
@@ -356,7 +364,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 								if(playback_ptr)
 								{
 									retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
-									kfree(playback_ptr);
+									dbg_kfree(playback_ptr);
 								}
 							}
 							else if(this_tcp_info->dup_ack_counter > MAX_FLYING_PACKET)
@@ -374,7 +382,7 @@ int pd_action_from_mirror (struct sk_buff *skb, struct other_args* arg)
 						if(playback_ptr)
 						{
 							retransmit_form_ptr(playback_ptr, ip, client_port, this_tcp_info);
-							kfree(playback_ptr);
+							dbg_kfree(playback_ptr);
 						}
 					}
 				}
@@ -469,9 +477,9 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->saddr,};
     packet_buffer_t* packet_buf = NULL;
-    struct other_args* this_args = kmalloc(sizeof_other_args, GFP_KERNEL);
-    struct buf_data* bd = kmalloc(sizeof(struct buf_data), GFP_KERNEL);
-    struct pkt_buffer_node* pbn = kmalloc(sizeof(struct pkt_buffer_node), GFP_KERNEL);
+    struct other_args* this_args = dbg_kmalloc(sizeof_other_args, GFP_KERNEL);
+    struct buf_data* bd = dbg_kmalloc(sizeof(struct buf_data), GFP_KERNEL);
+    struct pkt_buffer_node* pbn = dbg_kmalloc(sizeof(struct pkt_buffer_node), GFP_KERNEL);
 
     memcpy(this_args, arg, sizeof_other_args);
     bd->p = this_args;
@@ -480,7 +488,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
     init_timer(&(bd->timer));
     if ( IPPROTO_UDP == ip_header->protocol )
     {
-		struct sk_buff* skb_mod = skb_copy ( skb, GFP_ATOMIC );
+		struct sk_buff* skb_mod = dbg_skb_copy ( skb, GFP_ATOMIC );
         struct udphdr* udp_header = udp_hdr ( skb_mod );
         u16 client_port = ntohs ( udp_header->source );
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
@@ -499,7 +507,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 
     if ( IPPROTO_TCP == ip_header->protocol )
     {
-		struct sk_buff* skb_mod = skb_clone ( skb, GFP_ATOMIC );
+		struct sk_buff* skb_mod = dbg_skb_clone ( skb, GFP_ATOMIC );
         struct tcphdr* tcp_header = tcp_hdr ( skb_mod );
         unsigned short client_port = ntohs ( tcp_header->source );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
@@ -509,7 +517,7 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 
         if(TCP_STATE_LISTEN == this_tcp_info->state && !tcp_header->syn)
         {
-			kfree_skb(skb_mod);
+			dbg_kfree_skb(skb_mod);
             return 0;
         }
         packet_buf = & ( this_tcp_info->buffers.packet_buffer );
@@ -524,9 +532,10 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
         pbn->barrier = 0;
         //add_data ( packet_buf, bd );
 
-		if(tcp_header->syn || (ntohl(tcp_header->seq) == this_tcp_info->seq_last_ack || after(ntohl(tcp_header->seq), this_tcp_info->seq_last_ack))
-			|| (ntohl(tcp_header->ack_seq) == seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info) || after(ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))))
-// 		if(data_size)
+		if(tcp_header->syn
+		/*	|| !before(ntohl(tcp_header->seq), this_tcp_info->seq_last_ack) */
+			|| !before(ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))
+			|| data_size)
 		{
 			if(tcp_header->syn)
 			{
@@ -536,10 +545,10 @@ int pd_action_from_client (struct sk_buff *skb, struct other_args* arg)
 		}
 		else
 		{
-			kfree(pbn->bd->p);
-			kfree_skb(pbn->bd->skb);
-			kfree(pbn->bd);
-			kfree(pbn);
+			dbg_kfree(pbn->bd->p);
+			dbg_kfree_skb(pbn->bd->skb);
+			dbg_kfree(pbn->bd);
+			dbg_kfree(pbn);
 		}
         switch ( tcp_state_get(&conn_info_set, ip, client_port) )
         {
@@ -560,7 +569,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 {
     struct iphdr* ip_header = ip_hdr ( skb );
     union my_ip_type ip = {.i = ip_header->daddr,};
-    struct buffer_node* bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+    struct buffer_node* bn = dbg_kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
 	int rc = 0;
     if ( IPPROTO_UDP == ip_header->protocol )
     {
@@ -569,7 +578,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         struct udp_conn_info* this_udp_info = UDP_CONN_INFO(&conn_info_set, ip, client_port);
         packet_buffer_t* packet_buf = & ( this_udp_info->buffers.packet_buffer );
         size_t data_size            = ntohs ( udp_header->len ) - sizeof ( struct udphdr );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+        unsigned char* data         = dbg_kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_UDP, .host_type = HOST_TYPE_TARGET};
 
         if(this_udp_info->unlock == 0)
@@ -591,6 +600,11 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
             compare_buffer_insert(bn, &this_udp_info->buffers.target_buffer);
             do_compare(&con_info, &this_udp_info->buffers.target_buffer, &this_udp_info->buffers.mirror_buffer, NULL);
         }
+        else
+		{
+			dbg_kfree(data);
+			dbg_kfree(bn);
+		}
     }
     if ( IPPROTO_TCP == ip_header->protocol )
     {
@@ -598,7 +612,7 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
         unsigned short client_port  = ntohs ( tcp_header->dest );
         struct tcp_conn_info* this_tcp_info = TCP_CONN_INFO(&conn_info_set, ip, client_port);
         size_t data_size            = ntohs ( ip_header->tot_len ) - ( ( ip_header->ihl ) <<2 ) - ( ( tcp_header->doff ) <<2 );
-        unsigned char* data         = kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
+        unsigned char* data         = dbg_kmalloc ( sizeof ( unsigned char ) * data_size, GFP_KERNEL );
         struct connection_info con_info = {.ip = ip, .port = client_port, .proto = IPPROTO_TCP, .host_type = HOST_TYPE_TARGET};
 		u32 packet_tsval = get_tsval(skb);
 		u32 info_timestamp_last_from_target = 0;
@@ -630,9 +644,9 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 			compare_buffer_insert(bn, &this_tcp_info->buffers.target_buffer);
 			if(tcp_header->fin)
 			{// Add an edge bh to make push-fin packet can be compare
-				struct buffer_node* tail_bn = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+				struct buffer_node* tail_bn = dbg_kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
 				PRINT_DEBUG("insert tail buffer node\n");
-				tail_bn->payload.data = kmalloc(0, GFP_KERNEL);
+				tail_bn->payload.data = dbg_kmalloc(0, GFP_KERNEL);
 				tail_bn->payload.length = 0;
 				tail_bn->payload.remain = 0;
 				tail_bn->seq_num = bn->seq_num_next;
@@ -640,8 +654,13 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 				tail_bn->opt_key = packet_tsval;
 				compare_buffer_insert(tail_bn, &this_tcp_info->buffers.target_buffer);
 			}
-            do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
-        }
+			do_compare(&con_info, &this_tcp_info->buffers.target_buffer, &this_tcp_info->buffers.mirror_buffer, NULL);
+		}
+		else
+		{
+			dbg_kfree(data);
+			dbg_kfree(bn);
+		}
 		if (before(info_timestamp_last_from_target, packet_tsval))
 		{
 			info_ackseq_last_from_target = ntohl(tcp_header->ack_seq);
@@ -649,9 +668,9 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 		}
 		if(tcp_header->ack)
 		{
-			info_other_args_from_target = kmalloc(sizeof_other_args, GFP_KERNEL);
+			info_other_args_from_target = dbg_kmalloc(sizeof_other_args, GFP_KERNEL);
 			memcpy(info_other_args_from_target, arg, sizeof_other_args);
-			info_last_ack_send_from_target = skb_clone(skb, GFP_ATOMIC);
+			info_last_ack_send_from_target = dbg_skb_clone(skb, GFP_ATOMIC);
 		}
         if ( tcp_header->syn )
         {
@@ -666,14 +685,14 @@ int pd_action_from_server (struct sk_buff *skb, struct other_args *arg)
 		this_tcp_info->ackseq_last_from_target = info_ackseq_last_from_target;
 		if(this_tcp_info->other_args_from_target != info_other_args_from_target)
 		{
-			kfree(this_tcp_info->other_args_from_target);
+			dbg_kfree(this_tcp_info->other_args_from_target);
 			this_tcp_info->other_args_from_target = info_other_args_from_target;
 		}
 // 		else
 // 			kfree(info_other_args_from_target);
 		if(info_last_ack_send_from_target != this_tcp_info->last_ack_send_from_target)
 		{
-			kfree_skb(this_tcp_info->last_ack_send_from_target);
+			dbg_kfree_skb(this_tcp_info->last_ack_send_from_target);
 			this_tcp_info->last_ack_send_from_target = info_last_ack_send_from_target;
 		}
 // 		else

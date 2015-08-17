@@ -75,13 +75,13 @@ insert:
 			goto free;
 
 		data_size = data_end - data_start;
-		bn_this = kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
+		bn_this = dbg_kmalloc ( sizeof ( struct buffer_node ) , GFP_KERNEL );
 		bn_this->opt_key = bn->opt_key;
 		bn_this->seq_num = bn->seq_num + data_start;
 		bn_this->seq_num_next = bn->seq_num_next - data_end;
 		bn_this->payload.length = data_size;
 		bn_this->payload.remain = data_size;
-		bn_this->payload.data = kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
+		bn_this->payload.data = dbg_kmalloc ( sizeof ( unsigned char ) * data_size + 1, GFP_KERNEL );
 		memcpy ( bn_this->payload.data, bn->payload.data, data_size );
 	}
 	PRINT_DEBUG("insert: (%u, %u)\n", bn_this->seq_num, bn_this->seq_num_next);
@@ -89,8 +89,8 @@ insert:
 	if(bn == bn_this)
 		goto exit;
 free:
-	kfree(bn->payload.data);
-	kfree(bn);
+	dbg_kfree(bn->payload.data);
+	dbg_kfree(bn);
 exit:
 	spin_unlock_bh(&(buffer->compare_lock));
 	return 0;
@@ -99,8 +99,8 @@ exit:
 void del_buffer_node(struct buffer_node* bn)
 {
     list_del(&bn->list);
-    kfree(bn->payload.data);
-    kfree(bn);
+    dbg_kfree(bn->payload.data);
+    dbg_kfree(bn);
 }
 
 struct data_node* compare_buffer_getblock(struct compare_buffer* buffer)
@@ -186,8 +186,8 @@ int compare_buffer_cleanup(struct compare_buffer* buffer)
 
 		list_del(iterator);
 		bn = list_entry(iterator, struct buffer_node, list);
-		kfree(bn->payload.data);
-		kfree(bn);
+		dbg_kfree(bn->payload.data);
+		dbg_kfree(bn);
 	}
 	return 0;
 }

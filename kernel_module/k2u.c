@@ -223,7 +223,7 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 	int should_break = INT_MAX;
 	int remain = length;
 	int send_size = 0;
-	char* buffer = kmalloc(NL_MAXPAYLOAD, GFP_KERNEL); //NL_MAXPAYLOAD is too large to alloc in stack
+	char* buffer = dbg_kmalloc(NL_MAXPAYLOAD, GFP_KERNEL); //NL_MAXPAYLOAD is too large to alloc in stack
 	char* data_begin = buffer + sizeof(struct connection_info);
 
 	if(!buffer)
@@ -247,6 +247,6 @@ int netlink_send_data(struct connection_info* info, char* data, int length)
 			send_size += (actual_send - sizeof(struct connection_info));
 		}
 	}
-	kfree(buffer);
+	dbg_kfree(buffer);
 	return send_size;
 }

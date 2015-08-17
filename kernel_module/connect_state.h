@@ -71,8 +71,6 @@ struct tcp_conn_info
 	 */
     u32 timestamp_last_from_target;
 	u32 ts_recent;
-//     u32 tsval_current;
-//     u32 tsval_last_send;
     u32 seq_last_ack;               //last ack from mirror
 };
 

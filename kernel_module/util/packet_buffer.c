@@ -21,6 +21,10 @@ int pkt_buffer_insert(struct pkt_buffer_node* pbn, packet_buffer_t* pbuf)
 	insert_point = head;
 	/*
 	 * currently, the least_seq in packet buffer is not used, it should be setup when playback packet
+	 * 
+	 * before this function called by pd_action_from_client in packet_dispatcher.c, pd_action_from_client will check 
+	 * "!before(ntohl(tcp_header->ack_seq), seq_to_target(this_tcp_info->ackseq_last_playback, this_tcp_info))"
+	 * to prevent insert ald packets
 	 */
 // 	if(after(pbuf->least_seq, pbn->seq_num))
 // 	{
@@ -56,10 +60,10 @@ insert:
 	list_add(&pbn_this->list, insert_point);
 	goto exit;
 free:
-	kfree(pbn->bd->p);
-	kfree_skb(pbn->bd->skb);
-	kfree(pbn->bd);
-	kfree(pbn);
+	dbg_kfree(pbn->bd->p);
+	dbg_kfree_skb(pbn->bd->skb);
+	dbg_kfree(pbn->bd);
+	dbg_kfree(pbn);
 exit:
 	spin_unlock_bh(&(pbuf->packet_lock));
 	return 0;
@@ -143,10 +147,10 @@ insert:
 	goto out;
 free:
 	PRINT_DEBUG("free: iter: (%u, %u), pbn: (%u, %u), prev: (%u, %u)\n", pbn_i->seq_num, pbn_i->seq_num_next, pbn->seq_num, pbn->seq_num_next, pbn_p->seq_num, pbn_p->seq_num_next);
-	kfree(pbn->bd->p);
-	kfree_skb(pbn->bd->skb);
-	kfree(pbn->bd);
-	kfree(pbn);
+	dbg_kfree(pbn->bd->p);
+	dbg_kfree_skb(pbn->bd->skb);
+	dbg_kfree(pbn->bd);
+	dbg_kfree(pbn);
 	goto out;
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
@@ -172,7 +176,7 @@ struct buf_data* pkt_buffer_get_data(packet_buffer_t* pbuf)
 
 	bd = pbn->bd;
 	list_del(pos);
-	kfree(pbn);
+	dbg_kfree(pbn);
 	pbuf->node_count--;
 out:
 	spin_unlock_bh(&pbuf->packet_lock);
@@ -337,16 +341,26 @@ inline int pkt_buffer_delete(struct list_head *iterator, packet_buffer_t* pbuf)
 	pbn = list_entry(iterator, struct pkt_buffer_node, list);
 	print_packet_buffer_usage(pbuf);
 
-	if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+// 	if(pbn->bd->should_delete == 0 && try_to_del_timer_sync(&pbn->bd->timer) < 0)
+// 	{
+// 		pbn->bd->should_delete = 1;
+// 		return -1;
+// 	}
+	if(timer_pending(&pbn->bd->timer))
 	{
-		pbn->bd->should_delete = 1;
-		return -1;
+		if(try_to_del_timer_sync(&pbn->bd->timer) < 0)
+		{
+			pbn->bd->should_delete = 1;
+			return -1;
+		}
+		else
+			dbg_kfree((void*)pbn->bd->timer.data);
 	}
 	list_del(iterator);
-	kfree(pbn->bd->p);
-	kfree_skb(pbn->bd->skb);
-	kfree(pbn->bd);
-	kfree(pbn);
+	dbg_kfree(pbn->bd->p);
+	dbg_kfree_skb(pbn->bd->skb);
+	dbg_kfree(pbn->bd);
+	dbg_kfree(pbn);
 	pbuf->node_count--;
 
 	return 0;

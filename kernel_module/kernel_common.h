@@ -10,6 +10,7 @@
 
 #include "ovs/ovs_func.h"
 #include "util/packet_buffer.h"
+#include "util/mem_dbg.h"
 
 #include "../commom.h"
 

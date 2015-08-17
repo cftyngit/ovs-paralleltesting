@@ -48,7 +48,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->tcp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
+                get_proto_state = dbg_kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
                 if(NULL == get_proto_state)
                     break;
 
@@ -60,7 +60,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             get_proto_state = radix_tree_lookup(&(get_conn_info->udp_info_set), port);
             if(!get_proto_state)
             {
-                get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
+                get_proto_state = dbg_kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
                 if(NULL == get_proto_state)
                     break;
 
@@ -72,7 +72,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
     }
     else
     {
-        get_conn_info = kmalloc(sizeof(struct host_conn_info), GFP_KERNEL);
+        get_conn_info = dbg_kmalloc(sizeof(struct host_conn_info), GFP_KERNEL);
         if(NULL == get_conn_info)
             return NULL;
 
@@ -81,7 +81,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
         switch(proto)
         {
         case IPPROTO_TCP:
-            get_proto_state = kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
+            get_proto_state = dbg_kmalloc(sizeof(struct tcp_conn_info), GFP_KERNEL);
             if(NULL == get_proto_state)
                 break;
 
@@ -89,7 +89,7 @@ void* query_connect_info(struct host_conn_info_set* conn_info_set, union my_ip_t
             radix_tree_insert(&(get_conn_info->tcp_info_set), port, get_proto_state);
             break;
         case IPPROTO_UDP:
-            get_proto_state = kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
+            get_proto_state = dbg_kmalloc(sizeof(struct udp_conn_info), GFP_KERNEL);
             if(NULL == get_proto_state)
                 break;
 
@@ -117,14 +117,14 @@ int tcp_state_reset(struct host_conn_info_set* conn_info_set, union my_ip_type i
 			return 1;
 
         radix_tree_delete(&(get_conn_info->tcp_info_set), port);
-        kfree(get_proto_state);
+        dbg_kfree(get_proto_state);
         get_conn_info->tcp_info_count--;
     }
     if( get_conn_info->tcp_info_count || get_conn_info->udp_info_count )
         return 1;
 
     radix_tree_delete(&(conn_info_set->conn_info_set), ip.i);
-    kfree(get_conn_info);
+    dbg_kfree(get_conn_info);
     conn_info_set->count--;
     return 0;
 }
@@ -146,11 +146,11 @@ static void tcp_stat_cleanup(struct radix_tree_root* tcp_info_set)
 			compare_buffer_cleanup(&(tci->buffers.mirror_buffer));
 			compare_buffer_cleanup(&(tci->buffers.target_buffer));
 			radix_tree_delete(tcp_info_set, iter.index);
-			kfree(tci->other_args_from_target);
+			dbg_kfree(tci->other_args_from_target);
 			tci->other_args_from_target = NULL;
-			kfree_skb(tci->last_ack_send_from_target);
+			dbg_kfree_skb(tci->last_ack_send_from_target);
 			tci->last_ack_send_from_target = NULL;
-			kfree(tci);
+			dbg_kfree(tci);
 		}
 	}
 }
@@ -172,7 +172,7 @@ static void udp_stat_cleanup(struct radix_tree_root* udp_info_set)
 			compare_buffer_cleanup(&(uci->buffers.mirror_buffer));
 			compare_buffer_cleanup(&(uci->buffers.target_buffer));
 			radix_tree_delete(udp_info_set, iter.index);
-			kfree(uci);
+			dbg_kfree(uci);
 		}
 	}
 }
@@ -190,7 +190,7 @@ void connect_stat_cleanup(struct host_conn_info_set* conn_info_set)
 			tcp_stat_cleanup(&hci->tcp_info_set);
 			udp_stat_cleanup(&hci->udp_info_set);
 			radix_tree_delete(&(conn_info_set->conn_info_set), iter.index);
-			kfree(hci);
+			dbg_kfree(hci);
 			conn_info_set->count--;
 		}
 	}

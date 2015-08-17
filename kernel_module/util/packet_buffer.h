@@ -6,6 +6,8 @@
 #include <linux/skbuff.h>
 #include <net/tcp.h>
 
+#include "mem_dbg.h"
+
 struct buf_data
 {
     int retrans_times;
